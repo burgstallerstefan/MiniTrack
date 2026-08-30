@@ -5,7 +5,7 @@
     'https://overpass.private.coffee/api/interpreter'
   ];
   const CELL = 0.5;
-  const CACHE_PREFIX = 'minitrack-pois-v6:';
+  const CACHE_PREFIX = 'minitrack-pois-v7:';
   const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
   const known = new Set();
   const loadedCells = new Set();
@@ -20,25 +20,15 @@
 
   function clauses(bbox, onlyAlms=false){
     const p=[];
-    if(checked('almsChk')){
-      p.push(`nwr["name"~"(alm|alpe)",i](${bbox});`);
-    }
-    if(!onlyAlms && checked('hutsChk')){
-      p.push(`nwr["tourism"~"^(alpine_hut|wilderness_hut)$"](${bbox});`);
-    }
-    if(!onlyAlms && checked('foodChk')){
-      p.push(`nwr["amenity"~"^(restaurant|cafe|fast_food|bar|biergarten)$"]["name"](${bbox});`);
-    }
-    if(!onlyAlms && checked('peaksChk')){
-      p.push(`nwr["natural"="peak"]["name"](${bbox});`);
-    }
+    if(checked('almsChk')) p.push(`nwr["name"~"(alm|alpe)",i](${bbox});`);
+    if(!onlyAlms && checked('hutsChk')) p.push(`nwr["tourism"~"^(alpine_hut|wilderness_hut)$"](${bbox});`);
+    if(!onlyAlms && checked('foodChk')) p.push(`nwr["amenity"~"^(restaurant|cafe|fast_food|bar|biergarten)$"]["name"](${bbox});`);
+    if(!onlyAlms && checked('peaksChk')) p.push(`nwr["natural"="peak"]["name"](${bbox});`);
     return p;
   }
 
   function categoryFor(tags={}){
     const name=tags.name||tags['name:de']||'';
-    // WICHTIG: Alles mit Alm/Alpe im Namen ist zuerst eine Alm,
-    // auch wenn es zusätzlich Restaurant, Hütte usw. ist.
     if(/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
     if(tags.natural==='peak') return ['peaks','Gipfel'];
     if(tags.tourism==='alpine_hut'||tags.tourism==='wilderness_hut') return ['huts','Hütte'];
@@ -52,9 +42,7 @@
     return null;
   }
 
-  function markerKey(cat,name,c){
-    return `${cat}|${name}|${c[0].toFixed(5)}|${c[1].toFixed(5)}`;
-  }
+  function markerKey(cat,name,c){ return `${cat}|${name}|${c[0].toFixed(5)}|${c[1].toFixed(5)}`; }
 
   function addElements(elements){
     for(const el of elements||[]){
@@ -102,11 +90,7 @@
       const ctl=new AbortController();
       const timer=setTimeout(()=>ctl.abort(),8000);
       try{
-        const r=await fetch(endpoint+'?data='+encodeURIComponent(query),{
-          method:'GET',
-          cache:'no-store',
-          signal:ctl.signal
-        });
+        const r=await fetch(endpoint+'?data='+encodeURIComponent(query),{cache:'no-store',signal:ctl.signal});
         clearTimeout(timer);
         if(!r.ok) throw new Error('HTTP '+r.status);
         return await r.json();
@@ -132,7 +116,7 @@
     const cached=readCache(cacheId);
     if(cached) addElements(cached);
     status('lade Almen …');
-    const q=`[out:json][timeout:8];nwr["name"~"(alm|alpe)",i](${bbox});out center tags;`;
+    const q=`[out:json][timeout:8];nwr["name"~"(alm|alpe)",i](${bbox});out center;`;
     try{
       const data=await overpass(q,0);
       if(seq!==requestSeq) return;
@@ -140,7 +124,7 @@
       addElements(data.elements||[]);
       status();
     }catch{
-      if(seq===requestSeq) status('Alm-Daten werden nachgeladen');
+      if(seq===requestSeq) status('Alm-Server antwortet nicht');
     }
   }
 
@@ -164,15 +148,11 @@
   async function loadCell(bbox,seq,index){
     const cellKey=selectionKey()+':'+bbox;
     const cached=readCache(bbox);
-    if(cached){
-      addElements(cached);
-      loadedCells.add(cellKey);
-      return;
-    }
+    if(cached){ addElements(cached); loadedCells.add(cellKey); return; }
     if(loadedCells.has(cellKey)) return;
     const cs=clauses(bbox,false);
     if(!cs.length) return;
-    const q=`[out:json][timeout:8];(${cs.join('')});out center tags;`;
+    const q=`[out:json][timeout:8];(${cs.join('')});out center;`;
     try{
       const data=await overpass(q,index);
       if(seq!==requestSeq) return;
@@ -187,13 +167,8 @@
     await quickAlms(seq);
     if(seq!==requestSeq) return;
     const cells=visibleCells();
-
-    for(const bbox of cells){
-      const cached=readCache(bbox);
-      if(cached) addElements(cached);
-    }
+    for(const bbox of cells){ const cached=readCache(bbox); if(cached) addElements(cached); }
     status(cells.length?'lade weitere Ziele …':'');
-
     let next=0;
     const worker=async id=>{
       while(next<cells.length&&seq===requestSeq){

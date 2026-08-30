@@ -12,7 +12,7 @@
 
   if (!document.querySelector('script[data-elevation-ui]')) {
     const s = document.createElement('script');
-    s.src = 'elevation-ui.js?v=20260830-3';
+    s.src = 'elevation-ui.js?v=20260830-4';
     s.dataset.elevationUi = '1';
     document.body.appendChild(s);
   }
@@ -37,7 +37,36 @@
   const genericMeta = i => ({name: i === 0 ? 'Start' : (i === directPoints.length - 1 ? 'Ziel' : `Wegpunkt ${i}`), type:'', cat:'map'});
   const metaAt = i => directMeta[i] || genericMeta(i);
 
-  function routeCacheKey(points) { return points.map(p => `${(+p[0]).toFixed(5)},${(+p[1]).toFixed(5)}`).join('|'); }
+  function activityLabel() {
+    return window.MiniTrackActivity?.config?.label || 'Route';
+  }
+
+  function resetMetric(id, value='—') {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function clearCalculatedRoute(hidePanel = false) {
+    try { map.getSource('route')?.setData({type:'FeatureCollection',features:[]}); } catch {}
+    try { map.getSource('route-arrows')?.setData({type:'FeatureCollection',features:[]}); } catch {}
+    try { map.getSource('alternatives')?.setData({type:'FeatureCollection',features:[]}); } catch {}
+    routeCoords = null;
+    routeOptions = [];
+    selectedRouteIndex = 0;
+    if (startBtn) startBtn.disabled = true;
+    resetMetric('routeRemain');
+    resetMetric('routeUp');
+    resetMetric('routeDown');
+    resetMetric('routeDuration');
+    resetMetric('routeEffort');
+    resetMetric('routeRemainUp');
+    if (hidePanel) routeInfo.style.display = 'none';
+  }
+
+  function routeCacheKey(points) {
+    const profile = window.MiniTrackActivity?.profile || 'trekking';
+    return profile + ':' + points.map(p => `${(+p[0]).toFixed(5)},${(+p[1]).toFixed(5)}`).join('|');
+  }
   function cachedRoute(key) {
     const x = routeCache.get(key);
     if (!x) return null;
@@ -74,7 +103,7 @@
     activeRouteController = controller;
     const signal = controller.signal;
     const timeout = setTimeout(() => controller.abort(), 12000);
-    $('status').textContent = 'Berechne Wanderroute …';
+    $('status').textContent = `Berechne Route für ${activityLabel()} …`;
     try {
       const main = await fetchMainRoute(points, signal);
       if (id !== routeCalculationId || signal.aborted) throw new DOMException('stale','AbortError');
@@ -90,10 +119,10 @@
   };
 
   function cancelScheduledRoute() { if (rebuildTimer) clearTimeout(rebuildTimer); rebuildTimer = null; }
-  function scheduleRebuild(delay = 160) {
+  function scheduleRebuild(delay = 160, label = null) {
     cancelScheduledRoute();
     if (directPoints.length < 2) return;
-    rebuildTimer = setTimeout(() => { rebuildTimer = null; rebuildDirectRoute(); }, delay);
+    rebuildTimer = setTimeout(() => { rebuildTimer = null; rebuildDirectRoute(label); }, delay);
   }
   function clearDirectMarkers() { directMarkers.forEach(m => m.remove()); directMarkers = []; }
   function pointLabel(i) { if (i === 0) return 'S'; if (i === directPoints.length - 1) return 'Z'; return String(i); }
@@ -102,10 +131,14 @@
     if (i < 0 || i >= directPoints.length) return;
     directPoints.splice(i, 1); directMeta.splice(i, 1); pendingAdd = false; calcToken++;
     abortRouting(); cancelScheduledRoute(); renderDirectMarkers(); renderPointList();
-    if (directPoints.length >= 2) scheduleRebuild(80);
-    else {
-      if (map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection',features:[]});
-      routeCoords = null; if (startBtn) startBtn.disabled = true; $('routeRemain').textContent = '—'; $('routeTitle').textContent = 'Route planen';
+    if (directPoints.length >= 2) {
+      clearCalculatedRoute(false);
+      routeInfo.style.display = 'block';
+      scheduleRebuild(80);
+    } else {
+      clearCalculatedRoute(true);
+      $('routeTitle').textContent = 'Route planen';
+      $('status').textContent = directPoints.length ? 'Route entfernt · nur noch ein Punkt vorhanden.' : 'Route entfernt.';
     }
   }
 
@@ -127,7 +160,7 @@
       if (targetIndex !== fromIndex) {
         const [p] = directPoints.splice(fromIndex, 1); const [m] = directMeta.splice(fromIndex, 1);
         directPoints.splice(targetIndex, 0, p); directMeta.splice(targetIndex, 0, m);
-        calcToken++; abortRouting(); renderDirectMarkers(); renderPointList(); scheduleRebuild(80);
+        calcToken++; abortRouting(); clearCalculatedRoute(false); renderDirectMarkers(); renderPointList(); scheduleRebuild(80);
       }
     };
     document.addEventListener('pointermove', move, true); document.addEventListener('pointerup', up, true); document.addEventListener('pointercancel', up, true);
@@ -185,23 +218,30 @@
     marker.on('dragend', () => {
       const p = marker.getLngLat(); directPoints[i] = [p.lng, p.lat];
       if (directMeta[i]?.cat !== 'gps') directMeta[i] = {...metaAt(i), type: directMeta[i]?.type || ''};
-      renderPointList(); scheduleRebuild(100);
+      clearCalculatedRoute(false); renderPointList(); scheduleRebuild(100);
     });
     directMarkers.push(marker);
   }
   function renderDirectMarkers() { clearDirectMarkers(); directPoints.forEach((c, i) => addDirectMarker(c, i)); }
 
-  async function rebuildDirectRoute() {
+  async function rebuildDirectRoute(label = null) {
     if (directPoints.length < 2) return;
     const token = ++calcToken, snapshot = directPoints.map(p => [p[0], p[1]]);
+    const modeLabel = label || activityLabel();
     try {
-      const o = await calculateRoutes(snapshot, 'Geplante Wanderung');
+      const o = await calculateRoutes(snapshot, `Geplante ${modeLabel}-Route`);
       if (!o || token !== calcToken) return;
       $('routeTitle').textContent = `${directPoints.length} Punkte · ${o.dist.toFixed(1)} km`;
-      $('status').textContent = `${o.dist.toFixed(1)} km · Punkt antippen zum Anzeigen.`;
+      $('status').textContent = `${modeLabel}: ${o.dist.toFixed(1)} km · Punkt antippen zum Anzeigen.`;
     } catch (e) {
       if (e?.name === 'AbortError') return;
-      if (token === calcToken) $('status').textContent = 'Route konnte gerade nicht berechnet werden.';
+      if (token === calcToken) {
+        clearCalculatedRoute(false);
+        routeInfo.style.display = 'block';
+        renderPointList();
+        $('routeTitle').textContent = `${directPoints.length} Punkte · ${modeLabel}`;
+        $('status').textContent = `Route für ${modeLabel} nicht möglich.`;
+      }
     }
   }
 
@@ -211,7 +251,7 @@
       if (!directPoints.length) {
         directPoints = [[gps[0], gps[1]]];
         directMeta = [{name:'Start', type:'Aktueller Standort', cat:'gps'}];
-        renderDirectMarkers(); renderPointList(); routeInfo.style.display = 'block'; $('routeTitle').textContent = 'Route planen'; if (startBtn) startBtn.disabled = true;
+        renderDirectMarkers(); renderPointList(); $('routeTitle').textContent = 'Route planen'; if (startBtn) startBtn.disabled = true;
       }
       done?.();
     };
@@ -231,7 +271,7 @@
       const m = {name:meta.name || 'Punkt', type:meta.type || '', cat:meta.cat || 'poi'};
       if (directPoints.length < 2) { directPoints.push([c[0],c[1]]); directMeta.push(m); }
       else { directPoints.splice(directPoints.length - 1, 0, [c[0],c[1]]); directMeta.splice(directMeta.length - 1, 0, m); }
-      pendingAdd = false; renderDirectMarkers(); renderPointList(); abortRouting(); scheduleRebuild(60);
+      pendingAdd = false; renderDirectMarkers(); renderPointList(); abortRouting(); clearCalculatedRoute(false); routeInfo.style.display = 'block'; scheduleRebuild(60);
     });
   }
 
@@ -239,16 +279,28 @@
     if (!Array.isArray(c) || directPoints.length) return;
     directPoints = [[c[0],c[1]]];
     directMeta = [{name:meta.name || 'Start', type:meta.type || '', cat:meta.cat || 'poi'}];
-    renderDirectMarkers(); renderPointList(); routeInfo.style.display = 'block'; $('routeTitle').textContent = 'Route planen'; if (startBtn) startBtn.disabled = true;
+    renderDirectMarkers(); renderPointList(); if (startBtn) startBtn.disabled = true;
     $('status').textContent = `${directMeta[0].name} als Start gesetzt.`;
   }
 
   window.MiniTrackPlanner = {
     hasStart: () => directPoints.length > 0,
+    pointCount: () => directPoints.length,
     addPoi: addPoiPoint,
     setStartPoi: setPoiStart,
-    focusPoint
+    focusPoint,
+    recalculate: label => {
+      if (directPoints.length < 2) return false;
+      calcToken++; abortRouting(); cancelScheduledRoute(); clearCalculatedRoute(false); routeInfo.style.display = 'block'; renderPointList(); scheduleRebuild(40, label || activityLabel());
+      return true;
+    }
   };
+
+  document.addEventListener('minitrack:activitychange', e => {
+    if (directPoints.length < 2) return;
+    const label = e.detail?.label || activityLabel();
+    window.MiniTrackPlanner.recalculate(label);
+  });
 
   addBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); setGpsAsStartAndWaitForPoint(); });
 
@@ -261,11 +313,11 @@
     const m = {name: directPoints.length < 2 ? 'Ziel' : `Wegpunkt ${directPoints.length - 1}`, type:'', cat:'map'};
     if (directPoints.length < 2) { directPoints.push(c); directMeta.push(m); }
     else { directPoints.splice(directPoints.length - 1, 0, c); directMeta.splice(directMeta.length - 1, 0, m); }
-    renderDirectMarkers(); renderPointList(); abortRouting(); scheduleRebuild(60);
+    renderDirectMarkers(); renderPointList(); abortRouting(); clearCalculatedRoute(false); routeInfo.style.display = 'block'; scheduleRebuild(60);
   });
 
   clearBtn?.addEventListener('click', () => {
-    directPoints = []; directMeta = []; pendingAdd = false; calcToken++; abortRouting(); cancelScheduledRoute(); clearDirectMarkers(); renderPointList();
+    directPoints = []; directMeta = []; pendingAdd = false; calcToken++; abortRouting(); cancelScheduledRoute(); clearDirectMarkers(); renderPointList(); clearCalculatedRoute(true);
   });
 
   startBtn?.addEventListener('click', () => {

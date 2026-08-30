@@ -4,6 +4,7 @@
   let calcToken = 0;
   let insertAfter = null;
   let activePopup = null;
+  let rebuildTimer = null;
 
   if (!document.querySelector('script[data-elevation-ui]')) {
     const s = document.createElement('script');
@@ -29,13 +30,21 @@
     return String(i);
   }
 
+  function scheduleRebuild(delay = 120) {
+    clearTimeout(rebuildTimer);
+    rebuildTimer = setTimeout(() => {
+      rebuildTimer = null;
+      rebuildDirectRoute();
+    }, delay);
+  }
+
   function removePoint(i) {
     if (i < 0 || i >= directPoints.length) return;
     directPoints.splice(i, 1);
     insertAfter = null;
     calcToken++;
     renderDirectMarkers();
-    if (directPoints.length >= 2) rebuildDirectRoute();
+    if (directPoints.length >= 2) scheduleRebuild(30);
     else {
       try { clearRoute(); } catch {}
       $('routeInfo').style.display = 'none';
@@ -85,13 +94,16 @@
     el.textContent = pointLabel(i);
 
     const marker = new maplibregl.Marker({element:el, draggable:true}).setLngLat(c).addTo(map);
-    marker.on('dragstart', () => closePointPopup());
+    marker.on('dragstart', () => {
+      closePointPopup();
+      clearTimeout(rebuildTimer);
+      rebuildTimer = null;
+    });
     marker.on('dragend', () => {
       const p = marker.getLngLat();
       directPoints[i] = [p.lng, p.lat];
       insertAfter = null;
-      renderDirectMarkers();
-      if (directPoints.length >= 2) rebuildDirectRoute();
+      if (directPoints.length >= 2) scheduleRebuild(80);
     });
     el.addEventListener('click', ev => {
       ev.stopPropagation();
@@ -108,15 +120,17 @@
   async function rebuildDirectRoute() {
     if (directPoints.length < 2) return;
     const token = ++calcToken;
+    const snapshot = directPoints.map(p => [p[0], p[1]]);
     try {
-      await calculateRoutes(directPoints, 'Geplante Wanderung');
+      await calculateRoutes(snapshot, 'Geplante Wanderung');
       if (token !== calcToken) return;
       const o = routeOptions[selectedRouteIndex];
       if (o) {
         $('routeTitle').textContent = `${directPoints.length} Punkte · ${o.dist.toFixed(1)} km`;
         $('status').textContent = `${o.dist.toFixed(1)} km · Punkte ziehen oder weiteren Punkt antippen.`;
       }
-    } catch {
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
       if (token === calcToken) $('status').textContent = 'Route konnte gerade nicht berechnet werden.';
     }
   }
@@ -144,13 +158,15 @@
       $('status').textContent = 'Start gesetzt. Nächsten Punkt auf der Karte antippen.';
       return;
     }
-    rebuildDirectRoute();
+    scheduleRebuild(60);
   });
 
   $('clearRoute')?.addEventListener('click', () => {
     directPoints = [];
     insertAfter = null;
     calcToken++;
+    clearTimeout(rebuildTimer);
+    rebuildTimer = null;
     clearDirectMarkers();
     $('status').textContent = 'Route gelöscht. Ersten Punkt als Start antippen.';
   });
@@ -159,6 +175,8 @@
     if (!routeCoords?.length) return;
     closePointPopup();
     insertAfter = null;
+    clearTimeout(rebuildTimer);
+    rebuildTimer = null;
     clearDirectMarkers();
     const pos = gps || routeCoords[0];
     const b = routeCoords.length > 1 ? bearing(routeCoords[0], routeCoords[Math.min(8, routeCoords.length - 1)]) : 0;
@@ -182,10 +200,12 @@
     routeActions.insertBefore(btn, $('clearRoute'));
   }
   if ($('saveTrack')) $('saveTrack').textContent = '⬇ GPX';
-  if (!document.querySelector('script[data-gpx-export]')) {
+
+  // Performance-Schicht erst laden, nachdem alle Planer-Funktionen definiert sind.
+  if (!document.querySelector('script[data-route-performance]')) {
     const s = document.createElement('script');
-    s.src = 'gpx-export.js?v=20260830-7';
-    s.dataset.gpxExport = '1';
+    s.src = 'route-performance.js?v=20260830-1';
+    s.dataset.routePerformance = '1';
     document.body.appendChild(s);
   }
 

@@ -1,144 +1,120 @@
 (() => {
-  const endpoints = [
-    'https://overpass.private.coffee/api/interpreter',
-    'https://overpass-api.de/api/interpreter'
-  ];
-  const known = new Set();
-  let runId = 0;
-  let timer = null;
+  const STORE='minitrack-known-pois-v1';
+  const known=new Set();
+  const saved=[];
+  let timer=null;
 
-  const checked = id => !!document.getElementById(id)?.checked;
+  const checked=id=>!!document.getElementById(id)?.checked;
 
-  function box() {
-    const b = map.getBounds();
-    return `${Math.max(-85,b.getSouth())},${b.getWest()},${Math.min(85,b.getNorth())},${b.getEast()}`;
-  }
+  function catFor(props={},layer=''){
+    const name=props.name||props.name_de||props['name:de']||'';
+    const cls=String(props.class||'').toLowerCase();
+    const sub=String(props.subclass||'').toLowerCase();
 
-  function coord(el) {
-    if (Number.isFinite(el.lon) && Number.isFinite(el.lat)) return [el.lon,el.lat];
-    if (el.center && Number.isFinite(el.center.lon) && Number.isFinite(el.center.lat)) return [el.center.lon,el.center.lat];
+    // Alm/Alpe hat immer Vorrang, egal ob zusätzlich Restaurant/Hütte getaggt.
+    if(/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
+    if(layer==='mountain_peak' && name) return ['peaks','Gipfel'];
+    if(layer==='poi'){
+      if(['alpine_hut','wilderness_hut'].includes(sub)||/hut/.test(sub)) return ['huts','Hütte'];
+      if(['restaurant','cafe','fast_food','bar','biergarten'].includes(sub)||['restaurant','cafe','bar'].includes(cls)) return ['food','Berggasthaus'];
+    }
     return null;
   }
 
-  function classify(tags={}) {
-    const name = tags.name || tags['name:de'] || '';
-    if (/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
-    if (tags.natural === 'peak') return ['peaks','Gipfel'];
-    if (tags.tourism === 'alpine_hut' || tags.tourism === 'wilderness_hut') return ['huts','Hütte'];
-    if (tags.amenity && /^(restaurant|cafe|fast_food|bar|biergarten)$/.test(tags.amenity)) return ['food','Berggasthaus'];
+  function coordFor(f){
+    const g=f?.geometry;
+    if(!g) return null;
+    if(g.type==='Point') return g.coordinates;
+    if(g.type==='MultiPoint') return g.coordinates?.[0]||null;
     return null;
   }
 
-  function add(elements) {
-    for (const el of elements || []) {
-      const tags = el.tags || {};
-      const c = coord(el);
-      const cat = classify(tags);
-      const name = tags.name || tags['name:de'] || 'Ohne Namen';
-      if (!cat || !c) continue;
-      if (cat[0] === 'alms' && !checked('almsChk')) continue;
-      if (cat[0] === 'huts' && !checked('hutsChk')) continue;
-      if (cat[0] === 'food' && !checked('foodChk')) continue;
-      if (cat[0] === 'peaks' && !checked('peaksChk')) continue;
-      const k = `${cat[0]}|${el.type||''}|${el.id||''}|${c[0].toFixed(5)}|${c[1].toFixed(5)}`;
-      if (known.has(k)) continue;
-      known.add(k);
-      addPoi(cat[0],cat[1],name,c,new Set());
+  function key(cat,name,c){
+    return `${cat}|${name}|${(+c[0]).toFixed(5)}|${(+c[1]).toFixed(5)}`;
+  }
+
+  function addOne(cat,type,name,c,persist=true){
+    if(!Array.isArray(c)||!Number.isFinite(+c[0])||!Number.isFinite(+c[1])) return;
+    const k=key(cat,name,c);
+    if(known.has(k)) return;
+    known.add(k);
+    addPoi(cat,type,name,[+c[0],+c[1]],new Set());
+    if(persist){
+      saved.push({cat,type,name,c:[+c[0],+c[1]]});
+      save();
     }
   }
 
-  function status(text='') {
-    if (tracking || planning) return;
+  function save(){
+    try{
+      // Begrenzen, damit localStorage nie vollläuft.
+      if(saved.length>5000) saved.splice(0,saved.length-5000);
+      localStorage.setItem(STORE,JSON.stringify(saved));
+    }catch{}
+  }
+
+  function restore(){
+    try{
+      const arr=JSON.parse(localStorage.getItem(STORE)||'[]');
+      if(!Array.isArray(arr)) return;
+      for(const x of arr){
+        if(!x?.cat||!x?.name||!Array.isArray(x.c)) continue;
+        saved.push(x);
+        addOne(x.cat,x.type||'',x.name,x.c,false);
+      }
+    }catch{}
+  }
+
+  function showStatus(){
+    if(tracking||planning) return;
     const p=[];
-    if (checked('almsChk')) p.push(`${markers.alms.length} Almen`);
-    if (checked('hutsChk')) p.push(`${markers.huts.length} Hütten`);
-    if (checked('foodChk')) p.push(`${markers.food.length} Berggasthäuser`);
-    if (checked('peaksChk')) p.push(`${markers.peaks.length} Gipfel`);
-    document.getElementById('status').textContent = (p.join(' · ') || 'Keine Ziele ausgewählt') + (text ? ` · ${text}` : '');
+    if(checked('almsChk')) p.push(`${markers.alms.length} Almen`);
+    if(checked('hutsChk')) p.push(`${markers.huts.length} Hütten`);
+    if(checked('foodChk')) p.push(`${markers.food.length} Berggasthäuser`);
+    if(checked('peaksChk')) p.push(`${markers.peaks.length} Gipfel`);
+    document.getElementById('status').textContent=(p.join(' · ')||'Keine Ziele ausgewählt')+' · direkt aus Kartendaten';
   }
 
-  function fetchOne(endpoint, query, timeout=5500) {
-    return new Promise((resolve,reject) => {
-      const ctl = new AbortController();
-      const t = setTimeout(() => { ctl.abort(); reject(new Error('Timeout')); }, timeout);
-      fetch(endpoint + '?data=' + encodeURIComponent(query), {cache:'no-store', signal:ctl.signal})
-        .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then(d => { clearTimeout(t); resolve(d.elements || []); })
-        .catch(e => { clearTimeout(t); reject(e); });
-    });
-  }
-
-  async function fastest(query) {
-    const jobs = endpoints.map((ep,i) => fetchOne(ep,query).then(elements => ({elements,server:i+1})));
-    if (typeof Promise.any === 'function') return Promise.any(jobs);
-    return new Promise((resolve,reject) => {
-      let fails=0,last;
-      jobs.forEach(p => p.then(resolve).catch(e => { last=e; if (++fails===jobs.length) reject(last); }));
-    });
-  }
-
-  async function loadAlms(b, id) {
-    if (!checked('almsChk')) return;
-    status('Almen: Server 1+2 …');
-
-    // Phase 1: Nodes sind am schnellsten und decken sehr viele Almen ab (z.B. Ottenalm).
-    const nodeQ = `[out:json][timeout:6];node["name"~"(alm|alpe)",i](${b});out body;`;
-    try {
-      const r = await fastest(nodeQ);
-      if (id !== runId) return;
-      add(r.elements);
-      status(`Almen geladen · Server ${r.server}`);
-    } catch (e) {
-      if (id === runId) status(`Alm-Serverfehler: ${e?.message || 'keine Antwort'}`);
-      return;
+  function harvest(){
+    if(!vectorSource) return;
+    for(const layer of ['poi','place','mountain_peak']){
+      let fs=[];
+      try{ fs=map.querySourceFeatures(vectorSource,{sourceLayer:layer})||[]; }
+      catch{ continue; }
+      for(const f of fs){
+        const props=f.properties||{};
+        const cat=catFor(props,layer);
+        const c=coordFor(f);
+        const name=props.name||props.name_de||props['name:de']||'';
+        if(!cat||!c||!name) continue;
+        addOne(cat[0],cat[1],name,c,true);
+      }
     }
 
-    // Phase 2: Ways/Relationen ergänzen, ohne die bereits sichtbaren Almen zu blockieren.
-    const wrQ = `[out:json][timeout:8];(way["name"~"(alm|alpe)",i](${b});relation["name"~"(alm|alpe)",i](${b}););out center;`;
-    try {
-      const r = await fastest(wrQ);
-      if (id !== runId) return;
-      add(r.elements);
-      status();
-    } catch {}
+    // Checkboxen bestimmen nur Sichtbarkeit, nicht ob Daten gesammelt werden.
+    for(const [cat,id] of [['alms','almsChk'],['huts','hutsChk'],['food','foodChk'],['peaks','peaksChk']]){
+      const on=checked(id);
+      markers[cat].forEach(m=>m.getElement().style.display=on?'block':'none');
+    }
+    showStatus();
   }
 
-  async function loadOthers(b,id) {
-    const q=[];
-    if (checked('hutsChk')) q.push(`nwr["tourism"~"^(alpine_hut|wilderness_hut)$"](${b});`);
-    if (checked('foodChk')) q.push(`nwr["amenity"~"^(restaurant|cafe|fast_food|bar|biergarten)$"]["name"](${b});`);
-    if (checked('peaksChk')) q.push(`nwr["natural"="peak"]["name"](${b});`);
-    if (!q.length) return;
-    try {
-      const r = await fastest(`[out:json][timeout:8];(${q.join('')});out center;`);
-      if (id !== runId) return;
-      add(r.elements);
-      status();
-    } catch {}
-  }
+  // Alte Funktion wird bewusst ersetzt: keine Marker löschen, kein Overpass.
+  updatePois=harvest;
 
-  async function load() {
-    const id = ++runId;
-    const b = box();
-    await loadAlms(b,id);
-    if (id !== runId) return;
-    loadOthers(b,id);
-  }
-
-  // Alte idle-POI-Funktion vollständig deaktivieren.
-  updatePois = () => {};
-
-  ['almsChk','hutsChk','foodChk','peaksChk'].forEach(cid => document.getElementById(cid)?.addEventListener('change', () => {
-    const cat = cid==='almsChk'?'alms':cid==='hutsChk'?'huts':cid==='foodChk'?'food':'peaks';
-    markers[cat].forEach(m => m.getElement().style.display = document.getElementById(cid).checked ? 'block' : 'none');
-    clearTimeout(timer);
-    timer = setTimeout(load,20);
+  ['almsChk','hutsChk','foodChk','peaksChk'].forEach(id=>document.getElementById(id)?.addEventListener('change',()=>{
+    const cat=id==='almsChk'?'alms':id==='hutsChk'?'huts':id==='foodChk'?'food':'peaks';
+    const on=checked(id);
+    markers[cat].forEach(m=>m.getElement().style.display=on?'block':'none');
+    harvest();
   }));
 
-  map.on('moveend',() => {
+  map.on('moveend',()=>{
     clearTimeout(timer);
-    timer = setTimeout(load,250);
+    timer=setTimeout(harvest,80);
   });
 
-  if (map.loaded()) load(); else map.once('load',load);
+  restore();
+  if(map.loaded()) setTimeout(harvest,80);
+  else map.once('load',()=>setTimeout(harvest,80));
 })();

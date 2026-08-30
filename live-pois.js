@@ -16,7 +16,27 @@
     if(layer==='mountain_peak' && name) return ['peaks','Gipfel'];
     if(layer==='poi'){
       if(['alpine_hut','wilderness_hut'].includes(sub)||/hut/.test(sub)) return ['huts','Hütte'];
-      if(['restaurant','cafe','fast_food','bar','biergarten'].includes(sub)||['restaurant','cafe','bar'].includes(cls)) return ['food','Berggasthaus'];
+
+      const foodSubs=['restaurant','cafe','fast_food','bar','pub','biergarten','food_court'];
+      const lodgingSubs=['hotel','motel','hostel','guest_house','guesthouse','inn','bed_and_breakfast','chalet','apartment','apartments','holiday_apartment','camp_site','caravan_site'];
+      const foodClasses=['restaurant','cafe','bar','food','eatery'];
+      const lodgingClasses=['lodging','accommodation','hotel','hostel','motel'];
+
+      if(foodSubs.includes(sub)||foodClasses.includes(cls)){
+        const t=sub==='cafe'?'Café':sub==='pub'?'Gasthaus / Pub':sub==='biergarten'?'Biergarten':'Gasthaus / Restaurant';
+        return ['food',t];
+      }
+      if(lodgingSubs.includes(sub)||lodgingClasses.includes(cls)){
+        let t='Unterkunft';
+        if(sub==='hotel') t='Hotel';
+        else if(sub==='hostel') t='Hostel';
+        else if(sub==='motel') t='Motel';
+        else if(['guest_house','guesthouse','inn','bed_and_breakfast'].includes(sub)) t='Pension / Gasthaus';
+        else if(sub==='chalet') t='Chalet';
+        else if(['apartment','apartments','holiday_apartment'].includes(sub)) t='Ferienwohnung';
+        else if(['camp_site','caravan_site'].includes(sub)) t='Camping';
+        return ['food',t];
+      }
     }
     return null;
   }
@@ -47,7 +67,6 @@
 
   function save(){
     try{
-      // Begrenzen, damit localStorage nie vollläuft.
       if(saved.length>5000) saved.splice(0,saved.length-5000);
       localStorage.setItem(STORE,JSON.stringify(saved));
     }catch{}
@@ -70,7 +89,7 @@
     const p=[];
     if(checked('almsChk')) p.push(`${markers.alms.length} Almen`);
     if(checked('hutsChk')) p.push(`${markers.huts.length} Hütten`);
-    if(checked('foodChk')) p.push(`${markers.food.length} Berggasthäuser`);
+    if(checked('foodChk')) p.push(`${markers.food.length} Gasthäuser & Unterkünfte`);
     if(checked('peaksChk')) p.push(`${markers.peaks.length} Gipfel`);
     document.getElementById('status').textContent=(p.join(' · ')||'Keine Ziele ausgewählt')+' · direkt aus Kartendaten';
   }
@@ -91,7 +110,6 @@
       }
     }
 
-    // Checkboxen bestimmen nur Sichtbarkeit, nicht ob Daten gesammelt werden.
     for(const [cat,id] of [['alms','almsChk'],['huts','hutsChk'],['food','foodChk'],['peaks','peaksChk']]){
       const on=checked(id);
       markers[cat].forEach(m=>m.getElement().style.display=on?'block':'none');
@@ -99,7 +117,6 @@
     showStatus();
   }
 
-  // Alte Funktion wird bewusst ersetzt: keine Marker löschen, kein Overpass.
   updatePois=harvest;
 
   ['almsChk','hutsChk','foodChk','peaksChk'].forEach(id=>document.getElementById(id)?.addEventListener('change',()=>{

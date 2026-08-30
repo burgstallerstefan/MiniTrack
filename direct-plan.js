@@ -6,16 +6,14 @@
   let activePopup = null;
   let rebuildTimer = null;
 
-  if (!document.querySelector('script[data-elevation-ui]')) {
-    const s = document.createElement('script');
-    s.src = 'elevation-ui.js?v=20260830-2';
-    s.dataset.elevationUi = '1';
-    document.body.appendChild(s);
-  }
-
   function closePointPopup() {
     if (activePopup) activePopup.remove();
     activePopup = null;
+  }
+
+  function cancelScheduledRoute() {
+    if (rebuildTimer) clearTimeout(rebuildTimer);
+    rebuildTimer = null;
   }
 
   function clearDirectMarkers() {
@@ -31,7 +29,8 @@
   }
 
   function scheduleRebuild(delay = 120) {
-    clearTimeout(rebuildTimer);
+    cancelScheduledRoute();
+    if (directPoints.length < 2) return;
     rebuildTimer = setTimeout(() => {
       rebuildTimer = null;
       rebuildDirectRoute();
@@ -43,8 +42,9 @@
     directPoints.splice(i, 1);
     insertAfter = null;
     calcToken++;
+    cancelScheduledRoute();
     renderDirectMarkers();
-    if (directPoints.length >= 2) scheduleRebuild(30);
+    if (directPoints.length >= 2) scheduleRebuild(80);
     else {
       try { clearRoute(); } catch {}
       $('routeInfo').style.display = 'none';
@@ -96,14 +96,14 @@
     const marker = new maplibregl.Marker({element:el, draggable:true}).setLngLat(c).addTo(map);
     marker.on('dragstart', () => {
       closePointPopup();
-      clearTimeout(rebuildTimer);
-      rebuildTimer = null;
+      cancelScheduledRoute();
     });
     marker.on('dragend', () => {
       const p = marker.getLngLat();
       directPoints[i] = [p.lng, p.lat];
       insertAfter = null;
-      if (directPoints.length >= 2) scheduleRebuild(80);
+      renderDirectMarkers();
+      scheduleRebuild(100);
     });
     el.addEventListener('click', ev => {
       ev.stopPropagation();
@@ -158,25 +158,24 @@
       $('status').textContent = 'Start gesetzt. Nächsten Punkt auf der Karte antippen.';
       return;
     }
-    scheduleRebuild(60);
+    scheduleRebuild(100);
   });
 
   $('clearRoute')?.addEventListener('click', () => {
     directPoints = [];
     insertAfter = null;
     calcToken++;
-    clearTimeout(rebuildTimer);
-    rebuildTimer = null;
+    cancelScheduledRoute();
     clearDirectMarkers();
     $('status').textContent = 'Route gelöscht. Ersten Punkt als Start antippen.';
   });
 
   $('startRoute')?.addEventListener('click', () => {
     if (!routeCoords?.length) return;
+    calcToken++;
+    cancelScheduledRoute();
     closePointPopup();
     insertAfter = null;
-    clearTimeout(rebuildTimer);
-    rebuildTimer = null;
     clearDirectMarkers();
     const pos = gps || routeCoords[0];
     const b = routeCoords.length > 1 ? bearing(routeCoords[0], routeCoords[Math.min(8, routeCoords.length - 1)]) : 0;
@@ -200,14 +199,6 @@
     routeActions.insertBefore(btn, $('clearRoute'));
   }
   if ($('saveTrack')) $('saveTrack').textContent = '⬇ GPX';
-
-  // Performance-Schicht erst laden, nachdem alle Planer-Funktionen definiert sind.
-  if (!document.querySelector('script[data-route-performance]')) {
-    const s = document.createElement('script');
-    s.src = 'route-performance.js?v=20260830-1';
-    s.dataset.routePerformance = '1';
-    document.body.appendChild(s);
-  }
 
   map.on('load', () => {
     if (!tracking) $('status').textContent = 'Tippe auf die Karte: erster Punkt = Start.';

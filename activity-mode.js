@@ -1,11 +1,11 @@
 (() => {
   const MODES = {
-    wandern: {label:'Wandern', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Wanderwege'},
-    alpin: {label:'Alpin', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Alpine Wege'},
-    rennrad: {label:'Rennrad', profile:'fastbike', tiles:'cycling', wayLabel:'Radrouten', pavedOnly:true},
-    gravel: {label:'Gravel', profile:'trekking', tiles:'cycling', wayLabel:'Gravel-/Radrouten'},
-    mtb: {label:'Mountainbike', profile:'mtb', tiles:'mtb', wayLabel:'MTB-Routen'},
-    spazieren: {label:'Spazieren', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Spazierwege'}
+    wandern: {label:'Wandern', icon:'🥾', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Wanderwege'},
+    alpin: {label:'Alpin', icon:'⛰️', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Alpine Wege'},
+    rennrad: {label:'Rennrad', icon:'🚴', profile:'fastbike', tiles:'cycling', wayLabel:'Radrouten', pavedOnly:true},
+    gravel: {label:'Gravel', icon:'🚲', profile:'trekking', tiles:'cycling', wayLabel:'Gravel-/Radrouten'},
+    mtb: {label:'Mountainbike', icon:'🚵', profile:'mtb', tiles:'mtb', wayLabel:'MTB-Routen'},
+    spazieren: {label:'Spazieren', icon:'🚶', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Spazierwege'}
   };
 
   const UNPAVED = ['gravel','unpaved','compacted','fine_gravel','ground','dirt','earth','sand'];
@@ -38,8 +38,9 @@
     #routeModeToggle.active{background:#222;color:#fff}
     #routeModeMenu{display:none;position:absolute;left:0;top:50px;min-width:245px;background:rgba(255,255,255,.98);border:1px solid #ddd;border-radius:14px;padding:7px;box-shadow:0 5px 18px rgba(0,0,0,.22);z-index:4}
     #routeModeMenu.open{display:grid;gap:2px}
-    .routeModeOption{display:grid;grid-template-columns:26px 1fr;align-items:center;min-height:42px;padding:0 8px;border-radius:9px;font-size:14px;background:#fff}
+    .routeModeOption{display:grid;grid-template-columns:26px 30px 1fr;align-items:center;min-height:42px;padding:0 8px;border-radius:9px;font-size:14px;background:#fff}
     .routeModeOption input{margin:0}
+    .routeModeIcon{font-size:20px;line-height:1;text-align:center}
   `;
   document.head.appendChild(style);
 
@@ -49,7 +50,7 @@
   const btn = document.createElement('button');
   btn.id = 'routeModeToggle';
   btn.type = 'button';
-  btn.textContent = 'Wandern ▾';
+  btn.textContent = `${MODES[current].icon} ${MODES[current].label} ▾`;
   btn.setAttribute('aria-expanded','false');
 
   const menu = document.createElement('div');
@@ -62,9 +63,12 @@
     radio.name = 'routeMode';
     radio.value = key;
     radio.checked = key === current;
+    const icon = document.createElement('span');
+    icon.className = 'routeModeIcon';
+    icon.textContent = m.icon;
     const text = document.createElement('span');
     text.textContent = m.label;
-    label.append(radio,text);
+    label.append(radio,icon,text);
     menu.appendChild(label);
   });
   filters.append(btn,menu);
@@ -113,11 +117,8 @@
       try {
         if (!originalFilters.has(layer.id)) originalFilters.set(layer.id, map.getFilter(layer.id) || null);
         const original = originalFilters.get(layer.id);
-        if (!pavedOnly) {
-          map.setFilter(layer.id, original);
-        } else {
-          map.setFilter(layer.id, original ? ['all', original, surfaceExpression()] : surfaceExpression());
-        }
+        if (!pavedOnly) map.setFilter(layer.id, original);
+        else map.setFilter(layer.id, original ? ['all', original, surfaceExpression()] : surfaceExpression());
       } catch {}
     }
   }
@@ -126,7 +127,7 @@
     if (!MODES[key]) return;
     current = key;
     const cfg = MODES[key];
-    btn.textContent = `${cfg.label} ▾`;
+    btn.textContent = `${cfg.icon} ${cfg.label} ▾`;
     updateWayLabel();
     updateWayTiles();
     applyRoadSurfaceFilter();

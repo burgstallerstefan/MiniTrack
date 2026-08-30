@@ -25,3 +25,10 @@ button.secondary{background:#eee;color:#222}.good{background:#176b36!important}.
 #routeBox{display:none}
 #trackMap{height:260px;border:1px solid #ddd;border-radius:14px;overflow:hidden;margin-top:10px}
 #secureNote{display:none;background:#fff4df;border:1px solid #d6a35b;border-radius:12px;padding:10px;margin-bottom:10px}
+
+/* MiniTrack: Ebenen-Symbol bewusst getrennt von der Suche */
+#top{top:70px!important;right:8px!important;max-width:560px!important;padding-right:0!important}
+#filters{top:124px!important}
+#suggestions{top:120px!important}
+#layersBtn{top:10px!important;right:10px!important}
+@media(max-width:420px){#top{top:70px!important;right:8px!important}#filters{top:124px!important}#suggestions{top:120px!important;right:8px!important}}

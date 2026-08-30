@@ -16,4 +16,11 @@
     actions.insertBefore(save, start || actions.firstChild);
   }
   if (save) save.textContent = 'Speichern';
+
+  function fixRouteArrows() {
+    if (!map.getLayer('route-arrows')) return;
+    try { map.setLayoutProperty('route-arrows', 'text-rotate', ['+', ['get','bearing'], 90]); } catch {}
+  }
+  if (map.loaded()) fixRouteArrows(); else map.once('load', fixRouteArrows);
+  map.on('styledata', fixRouteArrows);
 })();

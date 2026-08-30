@@ -1,7 +1,11 @@
 (() => {
   const actions = document.getElementById('routeActions');
   const add = document.getElementById('addRoutePoint');
-  if (add) add.remove();
+  // Der Planer braucht diesen Knopf intern weiterhin; für den Benutzer bleibt er unsichtbar.
+  if (add) {
+    add.style.display = 'none';
+    add.setAttribute('aria-hidden','true');
+  }
 
   let save = document.getElementById('exportRouteGpx');
   if (!save && actions) {

@@ -1,7 +1,8 @@
 (() => {
-  let terrainOn = true;
+  let terrainOn = false;
   const TERRAIN_ID = 'terrain-dem';
   const HILLSHADE_ID = 'terrain-hillshade';
+  window.miniTrackTerrain3D = false;
 
   function removeTerrainCompletely() {
     try { map.setTerrain(null); } catch {}
@@ -38,6 +39,7 @@
   }
 
   function syncButtons() {
+    window.miniTrackTerrain3D = terrainOn;
     const panelBtn = document.getElementById('terrainToggle');
     panelBtn?.classList.toggle('active', terrainOn);
     if (panelBtn) panelBtn.textContent = terrainOn ? '✓ 3D Gelände' : '3D Gelände';
@@ -58,9 +60,8 @@
       map.setTerrain({ source: TERRAIN_ID, exaggeration: 1.65 });
       if (typeof map.setMaxPitch === 'function') map.setMaxPitch(85);
     } else {
-      // In 2D werden DEM und Hillshade komplett entfernt, damit das Handy sie nicht weiter rendert/lädt.
       removeTerrainCompletely();
-      try { map.easeTo({ pitch: 0, duration: 250 }); } catch {}
+      try { map.jumpTo({ pitch: 0 }); } catch {}
     }
     syncButtons();
   }
@@ -74,12 +75,11 @@
   function init() {
     removeTerrainCompletely();
     applyTerrain();
-
     document.getElementById('terrainToggle')?.addEventListener('click', toggleTerrain);
     document.getElementById('quickTerrainBtn')?.addEventListener('click', toggleTerrain);
-
     map.on('styledata', () => {
       if (!terrainOn) {
+        removeTerrainCompletely();
         syncButtons();
         return;
       }

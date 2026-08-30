@@ -16,6 +16,18 @@
   }
   if (save) save.textContent = 'Speichern';
 
+  // Entfernung steht bereits in der Statistik. Im Titel nur die Punktanzahl zeigen.
+  const routeTitle = document.getElementById('routeTitle');
+  function cleanRouteTitle() {
+    if (!routeTitle) return;
+    const cleaned = routeTitle.textContent.replace(/\s·\s\d+(?:[.,]\d+)?\s*km\s*$/i, '');
+    if (cleaned !== routeTitle.textContent) routeTitle.textContent = cleaned;
+  }
+  if (routeTitle) {
+    new MutationObserver(cleanRouteTitle).observe(routeTitle, {childList:true,characterData:true,subtree:true});
+    cleanRouteTitle();
+  }
+
   const angleDiff = (a,b) => {
     const d = Math.abs(((a-b+540)%360)-180);
     return d;

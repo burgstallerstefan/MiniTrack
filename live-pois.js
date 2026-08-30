@@ -5,7 +5,7 @@
     'https://overpass.private.coffee/api/interpreter'
   ];
   const CELL = 0.5;
-  const CACHE_PREFIX = 'minitrack-pois-v5:';
+  const CACHE_PREFIX = 'minitrack-pois-v6:';
   const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
   const known = new Set();
   const loadedCells = new Set();
@@ -37,10 +37,12 @@
 
   function categoryFor(tags={}){
     const name=tags.name||tags['name:de']||'';
+    // WICHTIG: Alles mit Alm/Alpe im Namen ist zuerst eine Alm,
+    // auch wenn es zusätzlich Restaurant, Hütte usw. ist.
+    if(/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
     if(tags.natural==='peak') return ['peaks','Gipfel'];
     if(tags.tourism==='alpine_hut'||tags.tourism==='wilderness_hut') return ['huts','Hütte'];
     if(tags.amenity && /^(restaurant|cafe|fast_food|bar|biergarten)$/.test(tags.amenity)) return ['food','Berggasthaus'];
-    if(/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
     return null;
   }
 
@@ -98,12 +100,10 @@
     for(let i=0;i<endpoints.length;i++){
       const endpoint=endpoints[(start+i)%endpoints.length];
       const ctl=new AbortController();
-      const timer=setTimeout(()=>ctl.abort(),6500);
+      const timer=setTimeout(()=>ctl.abort(),8000);
       try{
-        const r=await fetch(endpoint,{
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-          body:'data='+encodeURIComponent(query),
+        const r=await fetch(endpoint+'?data='+encodeURIComponent(query),{
+          method:'GET',
           cache:'no-store',
           signal:ctl.signal
         });
@@ -121,25 +121,26 @@
   function bboxAroundCenter(){
     const c=map.getCenter();
     const z=map.getZoom();
-    const d=z>=13?.12:z>=11?.25:z>=9?.5:1.0;
+    const d=z>=13?.15:z>=11?.3:z>=9?.6:1.0;
     return `${c.lat-d},${c.lng-d},${c.lat+d},${c.lng+d}`;
   }
 
   async function quickAlms(seq){
     if(!checked('almsChk')) return;
     const bbox=bboxAroundCenter();
-    const cached=readCache('ALM:'+bbox);
+    const cacheId='ALM:'+bbox;
+    const cached=readCache(cacheId);
     if(cached) addElements(cached);
-    status('lade Almen zuerst …');
-    const q=`[out:json][timeout:7];(${clauses(bbox,true).join('')});out center tags;`;
+    status('lade Almen …');
+    const q=`[out:json][timeout:8];nwr["name"~"(alm|alpe)",i](${bbox});out center tags;`;
     try{
       const data=await overpass(q,0);
       if(seq!==requestSeq) return;
-      writeCache('ALM:'+bbox,data.elements||[]);
+      writeCache(cacheId,data.elements||[]);
       addElements(data.elements||[]);
       status();
     }catch{
-      if(seq===requestSeq) status('Alm-Server antwortet langsam');
+      if(seq===requestSeq) status('Alm-Daten werden nachgeladen');
     }
   }
 
@@ -171,7 +172,7 @@
     if(loadedCells.has(cellKey)) return;
     const cs=clauses(bbox,false);
     if(!cs.length) return;
-    const q=`[out:json][timeout:7];(${cs.join('')});out center tags;`;
+    const q=`[out:json][timeout:8];(${cs.join('')});out center tags;`;
     try{
       const data=await overpass(q,index);
       if(seq!==requestSeq) return;
@@ -205,7 +206,6 @@
     if(seq===requestSeq) status();
   }
 
-  // Die alte idle-Funktion darf nie wieder Marker löschen oder neue Endlosschleifen starten.
   updatePois=()=>{};
 
   ['almsChk','hutsChk','foodChk','peaksChk'].forEach(id=>$(id)?.addEventListener('change',()=>{

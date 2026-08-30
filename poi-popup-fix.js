@@ -1,7 +1,6 @@
 (() => {
-  let lastPoiCoord = null;
+  let lastPoi = null;
 
-  // Alte Aktionen dürfen nicht einmal kurz sichtbar werden.
   const style = document.createElement('style');
   style.textContent = '.maplibregl-popup .fromBtn,.maplibregl-popup .routeBtn{display:none!important}';
   document.head.appendChild(style);
@@ -14,44 +13,20 @@
     } catch { return null; }
   }
 
+  function markerType(marker) {
+    if (marker.classList.contains('poi-hut')) return {type:'Hütte',cat:'huts'};
+    if (marker.classList.contains('poi-alm')) return {type:'Alm / Alpe',cat:'alms'};
+    if (marker.classList.contains('poi-food')) return {type:'Berggasthaus',cat:'food'};
+    if (marker.classList.contains('poi-peak')) return {type:'Gipfel',cat:'peaks'};
+    return {type:'Punkt',cat:'poi'};
+  }
+
   document.addEventListener('click', e => {
     const marker = e.target?.closest?.('.poi-marker');
     if (!marker) return;
     const c = coordFromElement(marker);
-    if (c) lastPoiCoord = c;
+    if (c) lastPoi = {c, ...markerType(marker)};
   }, true);
-
-  function hasPlannerStart() {
-    return !!document.querySelector('#routePointList .route-order-row');
-  }
-
-  function plannerAdd(c) {
-    const add = document.getElementById('addRoutePoint');
-    if (!add || !c) return;
-    const fire = () => {
-      add.click();
-      setTimeout(() => {
-        try {
-          map.fire('click', {
-            lngLat: new maplibregl.LngLat(c[0], c[1]),
-            originalEvent: { target: map.getCanvas() }
-          });
-        } catch {}
-      }, 30);
-    };
-    if (gps) fire(); else requestLocation(fire);
-  }
-
-  function plannerSetStart(c) {
-    const add = document.getElementById('addRoutePoint');
-    if (!add || !c) return;
-    const oldGps = gps ? [gps[0], gps[1]] : null;
-    gps = [c[0], c[1]];
-    add.click();
-    if (oldGps) gps = oldGps;
-    const status = document.getElementById('status');
-    if (status) status.textContent = 'Start gesetzt. Jetzt Ziel oder Wegpunkt hinzufügen.';
-  }
 
   function transformPopup(pop) {
     if (!pop || pop.dataset.minitrackNewPoiPopup === '1') return;
@@ -60,34 +35,33 @@
     if (!oldFrom && !oldRoute) return;
 
     pop.dataset.minitrackNewPoiPopup = '1';
-    oldFrom?.remove();
-    oldRoute?.remove();
+    oldFrom?.remove(); oldRoute?.remove();
 
     const body = pop.querySelector('.maplibregl-popup-content');
     if (!body) return;
-    const c = lastPoiCoord && [...lastPoiCoord];
+    const name = body.querySelector('b')?.textContent?.trim() || 'Punkt';
+    const poi = lastPoi ? {...lastPoi, name} : null;
+    if (!poi?.c) return;
 
     const actions = document.createElement('div');
     actions.style.cssText = 'display:grid;gap:8px;margin-top:10px';
 
-    if (!hasPlannerStart()) {
+    if (!window.MiniTrackPlanner?.hasStart?.()) {
       const start = document.createElement('button');
-      start.className = 'popbtn secondary';
-      start.textContent = 'Start';
+      start.className = 'popbtn secondary'; start.textContent = 'Start';
       start.addEventListener('click', ev => {
         ev.stopPropagation();
-        plannerSetStart(c);
+        window.MiniTrackPlanner?.setStartPoi?.(poi.c,{name:poi.name,type:poi.type,cat:poi.cat});
         pop.querySelector('.maplibregl-popup-close-button')?.click();
       });
       actions.appendChild(start);
     }
 
     const add = document.createElement('button');
-    add.className = 'popbtn good';
-    add.textContent = '＋ Hinzufügen';
+    add.className = 'popbtn good'; add.textContent = '＋ Hinzufügen';
     add.addEventListener('click', ev => {
       ev.stopPropagation();
-      plannerAdd(c);
+      window.MiniTrackPlanner?.addPoi?.(poi.c,{name:poi.name,type:poi.type,cat:poi.cat});
       pop.querySelector('.maplibregl-popup-close-button')?.click();
     });
     actions.appendChild(add);
@@ -101,7 +75,7 @@
 
   new MutationObserver(ms => {
     for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) scan(n);
-  }).observe(document.body, { childList: true, subtree: true });
+  }).observe(document.body, {childList:true,subtree:true});
 
   document.querySelectorAll('.maplibregl-popup').forEach(transformPopup);
 })();

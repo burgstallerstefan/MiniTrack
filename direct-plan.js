@@ -5,6 +5,13 @@
   let insertAfter = null;
   let activePopup = null;
 
+  if (!document.querySelector('script[data-elevation-ui]')) {
+    const s = document.createElement('script');
+    s.src = 'elevation-ui.js?v=20260830-2';
+    s.dataset.elevationUi = '1';
+    document.body.appendChild(s);
+  }
+
   function closePointPopup() {
     if (activePopup) activePopup.remove();
     activePopup = null;
@@ -152,7 +159,6 @@
     if (!routeCoords?.length) return;
     closePointPopup();
     insertAfter = null;
-    // Vor dem Start verschwinden die Bearbeitungspunkte, damit die Navigation sauber bleibt.
     clearDirectMarkers();
     const pos = gps || routeCoords[0];
     const b = routeCoords.length > 1 ? bearing(routeCoords[0], routeCoords[Math.min(8, routeCoords.length - 1)]) : 0;

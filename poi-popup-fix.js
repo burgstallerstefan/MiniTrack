@@ -1,6 +1,11 @@
 (() => {
   let lastPoiCoord = null;
 
+  // Alte Aktionen dürfen nicht einmal kurz sichtbar werden.
+  const style = document.createElement('style');
+  style.textContent = '.maplibregl-popup .fromBtn,.maplibregl-popup .routeBtn{display:none!important}';
+  document.head.appendChild(style);
+
   function coordFromElement(el) {
     try {
       const r = el.getBoundingClientRect();
@@ -68,7 +73,7 @@
     if (!hasPlannerStart()) {
       const start = document.createElement('button');
       start.className = 'popbtn secondary';
-      start.textContent = 'Von hier starten';
+      start.textContent = 'Start';
       start.addEventListener('click', ev => {
         ev.stopPropagation();
         plannerSetStart(c);

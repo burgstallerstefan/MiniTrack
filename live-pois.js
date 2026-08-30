@@ -4,16 +4,58 @@
   const saved=[];
   let timer=null;
 
+  markers.localities ||= [];
+
   const checked=id=>!!document.getElementById(id)?.checked;
+
+  // Kernfunktionen um die neue Kategorie "localities" erweitern.
+  visible = function(cat){
+    const id=cat==='alms'?'almsChk':cat==='huts'?'hutsChk':cat==='food'?'foodChk':cat==='localities'?'localitiesChk':'peaksChk';
+    return !!document.getElementById(id)?.checked;
+  };
+
+  addPoi = function(cat,type,name,c,seen){
+    const key=cat+'|'+name+'|'+c[0].toFixed(5)+'|'+c[1].toFixed(5);
+    if(seen.has(key)) return;
+    seen.add(key);
+    const el=document.createElement('div');
+    const markerClass=cat==='alms'?'alm':cat==='huts'?'hut':cat==='food'?'food':cat==='localities'?'locality':'peak';
+    el.className='poi-marker poi-'+markerClass;
+    if(cat==='localities'){
+      el.style.background='#4d78a8';
+      el.style.width='11px';
+      el.style.height='11px';
+      el.style.border='2px solid white';
+      el.style.boxShadow='0 1px 4px rgba(0,0,0,.55)';
+    }
+    const m=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat(c).addTo(map);
+    markers[cat].push(m);
+    if(!visible(cat)) el.style.display='none';
+    el.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      const pop=new maplibregl.Popup({offset:14}).setLngLat(c).setHTML(popupHtml(name,type)).addTo(map);
+      setTimeout(()=>{
+        const root=pop.getElement();
+        root?.querySelector('.fromBtn')?.addEventListener('click',()=>{customStart=c;customStartName=name;document.getElementById('status').textContent='Start gesetzt: '+name;pop.remove()});
+        root?.querySelector('.routeBtn')?.addEventListener('click',()=>routeTo(c,name));
+      },0);
+    });
+  };
 
   function catFor(props={},layer=''){
     const name=props.name||props.name_de||props['name:de']||'';
     const cls=String(props.class||'').toLowerCase();
     const sub=String(props.subclass||'').toLowerCase();
+    const place=String(props.place||'').toLowerCase();
 
-    // Alm/Alpe hat immer Vorrang, egal ob zusätzlich Restaurant/Hütte getaggt.
+    // Alm/Alpe hat immer Vorrang, egal ob zusätzlich Restaurant/Hütte/locality getaggt.
     if(/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
     if(layer==='mountain_peak' && name) return ['peaks','Gipfel'];
+
+    if(layer==='place' && name && (cls==='locality'||sub==='locality'||place==='locality')){
+      return ['localities','Lokalität'];
+    }
+
     if(layer==='poi'){
       if(['alpine_hut','wilderness_hut'].includes(sub)||/hut/.test(sub)) return ['huts','Hütte'];
 
@@ -78,6 +120,7 @@
       if(!Array.isArray(arr)) return;
       for(const x of arr){
         if(!x?.cat||!x?.name||!Array.isArray(x.c)) continue;
+        if(!markers[x.cat]) continue;
         saved.push(x);
         addOne(x.cat,x.type||'',x.name,x.c,false);
       }
@@ -90,6 +133,7 @@
     if(checked('almsChk')) p.push(`${markers.alms.length} Almen`);
     if(checked('hutsChk')) p.push(`${markers.huts.length} Hütten`);
     if(checked('foodChk')) p.push(`${markers.food.length} Gasthäuser & Unterkünfte`);
+    if(checked('localitiesChk')) p.push(`${markers.localities.length} Lokalitäten`);
     if(checked('peaksChk')) p.push(`${markers.peaks.length} Gipfel`);
     document.getElementById('status').textContent=(p.join(' · ')||'Keine Ziele ausgewählt')+' · direkt aus Kartendaten';
   }
@@ -110,7 +154,7 @@
       }
     }
 
-    for(const [cat,id] of [['alms','almsChk'],['huts','hutsChk'],['food','foodChk'],['peaks','peaksChk']]){
+    for(const [cat,id] of [['alms','almsChk'],['huts','hutsChk'],['food','foodChk'],['localities','localitiesChk'],['peaks','peaksChk']]){
       const on=checked(id);
       markers[cat].forEach(m=>m.getElement().style.display=on?'block':'none');
     }
@@ -119,8 +163,8 @@
 
   updatePois=harvest;
 
-  ['almsChk','hutsChk','foodChk','peaksChk'].forEach(id=>document.getElementById(id)?.addEventListener('change',()=>{
-    const cat=id==='almsChk'?'alms':id==='hutsChk'?'huts':id==='foodChk'?'food':'peaks';
+  ['almsChk','hutsChk','foodChk','localitiesChk','peaksChk'].forEach(id=>document.getElementById(id)?.addEventListener('change',()=>{
+    const cat=id==='almsChk'?'alms':id==='hutsChk'?'huts':id==='foodChk'?'food':id==='localitiesChk'?'localities':'peaks';
     const on=checked(id);
     markers[cat].forEach(m=>m.getElement().style.display=on?'block':'none');
     harvest();

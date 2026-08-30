@@ -14,7 +14,6 @@
     get profile(){ return MODES[current].profile; }
   };
 
-  // Zentraler Profil-Umschalter für sämtliche vorhandenen BRouter-Aufrufe.
   const nativeFetch = window.fetch.bind(window);
   window.fetch = function(input, init) {
     try {
@@ -33,11 +32,10 @@
   style.textContent = `
     #routeModeToggle{min-height:44px;background:rgba(255,255,255,.97);color:#222;border:1px solid #ccc;border-radius:13px;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:0 14px}
     #routeModeToggle.active{background:#222;color:#fff}
-    #routeModeMenu{display:none;position:absolute;left:150px;top:50px;min-width:205px;background:rgba(255,255,255,.98);border:1px solid #ddd;border-radius:14px;padding:7px;box-shadow:0 5px 18px rgba(0,0,0,.22);z-index:3}
+    #routeModeMenu{display:none;position:absolute;left:0;top:50px;min-width:245px;background:rgba(255,255,255,.98);border:1px solid #ddd;border-radius:14px;padding:7px;box-shadow:0 5px 18px rgba(0,0,0,.22);z-index:4}
     #routeModeMenu.open{display:grid;gap:2px}
     .routeModeOption{display:grid;grid-template-columns:26px 1fr;align-items:center;min-height:42px;padding:0 8px;border-radius:9px;font-size:14px;background:#fff}
     .routeModeOption input{margin:0}
-    @media(max-width:420px){#routeModeMenu{left:0;top:100px}}
   `;
   document.head.appendChild(style);
 
@@ -67,6 +65,14 @@
   });
   filters.append(btn,menu);
 
+  function closeContentMenu() {
+    const other = document.getElementById('filterMenu');
+    const otherBtn = document.getElementById('filterToggle');
+    other?.classList.remove('open');
+    otherBtn?.classList.remove('active');
+    otherBtn?.setAttribute('aria-expanded','false');
+  }
+
   function updateWayLabel() {
     const row = document.querySelector('#routesChk')?.closest('label');
     const spans = row ? row.querySelectorAll('span') : [];
@@ -79,9 +85,8 @@
     const url = `https://tile.waymarkedtrails.org/${cfg.tiles}/{z}/{x}/{y}.png`;
     const src = map.getSource('hiking');
     try {
-      if (src?.setTiles) {
-        src.setTiles([url]);
-      } else {
+      if (src?.setTiles) src.setTiles([url]);
+      else {
         const visible = document.getElementById('routesChk')?.checked !== false;
         if (map.getLayer('hiking')) map.removeLayer('hiking');
         if (map.getSource('hiking')) map.removeSource('hiking');
@@ -104,8 +109,10 @@
   }
 
   btn.addEventListener('click', e => {
+    e.preventDefault();
     e.stopPropagation();
     const open = !menu.classList.contains('open');
+    closeContentMenu();
     menu.classList.toggle('open',open);
     btn.classList.toggle('active',open);
     btn.setAttribute('aria-expanded',String(open));

@@ -2,12 +2,16 @@
   const MODES = {
     wandern: {label:'Wandern', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Wanderwege'},
     alpin: {label:'Alpin', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Alpine Wege'},
-    rennrad: {label:'Rennrad', profile:'fastbike', tiles:'cycling', wayLabel:'Radrouten'},
+    rennrad: {label:'Rennrad', profile:'fastbike', tiles:'cycling', wayLabel:'Radrouten', pavedOnly:true},
+    gravel: {label:'Gravel', profile:'trekking', tiles:'cycling', wayLabel:'Gravel-/Radrouten'},
     mtb: {label:'Mountainbike', profile:'mtb', tiles:'mtb', wayLabel:'MTB-Routen'},
     spazieren: {label:'Spazieren', profile:'hiking-mountain', tiles:'hiking', wayLabel:'Spazierwege'}
   };
 
+  const UNPAVED = ['gravel','unpaved','compacted','fine_gravel','ground','dirt','earth','sand'];
+  const originalFilters = new Map();
   let current = 'wandern';
+
   window.MiniTrackActivity = {
     get key(){ return current; },
     get config(){ return MODES[current]; },
@@ -96,6 +100,28 @@
     } catch {}
   }
 
+  function surfaceExpression() {
+    return ['!', ['match', ['downcase', ['to-string', ['coalesce', ['get','surface'], '']]], UNPAVED, true, false]];
+  }
+
+  function applyRoadSurfaceFilter() {
+    if (!map?.loaded?.()) return;
+    const pavedOnly = !!MODES[current].pavedOnly;
+    const layers = map.getStyle()?.layers || [];
+    for (const layer of layers) {
+      if (layer.type !== 'line' || layer.id === 'hiking' || layer.id.startsWith('route') || layer.id.startsWith('alternative') || layer.id === 'track-line') continue;
+      try {
+        if (!originalFilters.has(layer.id)) originalFilters.set(layer.id, map.getFilter(layer.id) || null);
+        const original = originalFilters.get(layer.id);
+        if (!pavedOnly) {
+          map.setFilter(layer.id, original);
+        } else {
+          map.setFilter(layer.id, original ? ['all', original, surfaceExpression()] : surfaceExpression());
+        }
+      } catch {}
+    }
+  }
+
   function applyMode(key) {
     if (!MODES[key]) return;
     current = key;
@@ -103,9 +129,10 @@
     btn.textContent = `${cfg.label} ▾`;
     updateWayLabel();
     updateWayTiles();
+    applyRoadSurfaceFilter();
     document.dispatchEvent(new CustomEvent('minitrack:activitychange',{detail:{key,...cfg}}));
     const s = document.getElementById('status');
-    if (s) s.textContent = `${cfg.label} aktiv · passende Wege geladen.`;
+    if (s) s.textContent = cfg.pavedOnly ? `${cfg.label} aktiv · Schotter wird vermieden.` : `${cfg.label} aktiv · passende Wege geladen.`;
   }
 
   btn.addEventListener('click', e => {
@@ -127,5 +154,6 @@
     btn.setAttribute('aria-expanded','false');
   });
 
-  map.on('load',()=>{ updateWayLabel(); updateWayTiles(); });
+  map.on('load',()=>{ updateWayLabel(); updateWayTiles(); applyRoadSurfaceFilter(); });
+  map.on('styledata',()=>{ setTimeout(applyRoadSurfaceFilter,0); });
 })();

@@ -1,27 +1,37 @@
 (() => {
   let terrainOn = true;
+  const TERRAIN_ID = 'terrain-dem';
+  const HILLSHADE_ID = 'terrain-hillshade';
+
+  function removeOldTerrain() {
+    try { map.setTerrain(null); } catch {}
+    try { if (map.getLayer(HILLSHADE_ID)) map.removeLayer(HILLSHADE_ID); } catch {}
+    try { if (map.getSource(TERRAIN_ID)) map.removeSource(TERRAIN_ID); } catch {}
+  }
 
   function addTerrainSource() {
-    if (map.getSource('terrain-dem')) return;
-    map.addSource('terrain-dem', {
+    if (map.getSource(TERRAIN_ID)) return;
+    map.addSource(TERRAIN_ID, {
       type: 'raster-dem',
       tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
       tileSize: 256,
+      minzoom: 0,
       maxzoom: 15,
-      encoding: 'terrarium'
+      encoding: 'terrarium',
+      attribution: 'Elevation: Mapzen / AWS Terrain Tiles'
     });
   }
 
   function addHillshade() {
-    if (map.getLayer('terrain-hillshade')) return;
+    if (map.getLayer(HILLSHADE_ID)) return;
     const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
     map.addLayer({
-      id: 'terrain-hillshade',
+      id: HILLSHADE_ID,
       type: 'hillshade',
-      source: 'terrain-dem',
+      source: TERRAIN_ID,
       paint: {
-        'hillshade-exaggeration': 0.38,
-        'hillshade-shadow-color': '#3d3d3d',
+        'hillshade-exaggeration': 0.5,
+        'hillshade-shadow-color': '#333333',
         'hillshade-highlight-color': '#ffffff'
       }
     }, firstSymbol);
@@ -30,9 +40,9 @@
   function applyTerrain() {
     addTerrainSource();
     addHillshade();
-    map.setTerrain(terrainOn ? { source: 'terrain-dem', exaggeration: 1.3 } : null);
-    if (map.getLayer('terrain-hillshade')) {
-      map.setLayoutProperty('terrain-hillshade', 'visibility', terrainOn ? 'visible' : 'none');
+    map.setTerrain(terrainOn ? { source: TERRAIN_ID, exaggeration: 1.65 } : null);
+    if (map.getLayer(HILLSHADE_ID)) {
+      map.setLayoutProperty(HILLSHADE_ID, 'visibility', terrainOn ? 'visible' : 'none');
     }
     if (typeof map.setMaxPitch === 'function') map.setMaxPitch(85);
     const btn = document.getElementById('terrainToggle');
@@ -41,20 +51,21 @@
   }
 
   function init() {
+    removeOldTerrain();
     applyTerrain();
+
     document.getElementById('terrainToggle')?.addEventListener('click', e => {
       e.stopPropagation();
       terrainOn = !terrainOn;
       applyTerrain();
     });
 
-    // 3D bleibt auch nach Kartenwechseln und Style-Aktualisierungen aktiv.
     map.on('styledata', () => {
       if (!terrainOn) return;
       try {
-        if (!map.getSource('terrain-dem')) addTerrainSource();
-        if (!map.getLayer('terrain-hillshade')) addHillshade();
-        map.setTerrain({ source: 'terrain-dem', exaggeration: 1.3 });
+        if (!map.getSource(TERRAIN_ID)) addTerrainSource();
+        if (!map.getLayer(HILLSHADE_ID)) addHillshade();
+        map.setTerrain({ source: TERRAIN_ID, exaggeration: 1.65 });
       } catch {}
     });
   }

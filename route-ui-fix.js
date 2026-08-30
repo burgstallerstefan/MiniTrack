@@ -1,7 +1,6 @@
 (() => {
   const actions = document.getElementById('routeActions');
   const add = document.getElementById('addRoutePoint');
-  // Der Planer braucht diesen Knopf intern weiterhin; für den Benutzer bleibt er unsichtbar.
   if (add) {
     add.style.display = 'none';
     add.setAttribute('aria-hidden','true');
@@ -17,30 +16,61 @@
   }
   if (save) save.textContent = 'Speichern';
 
-  // Weniger, klarere Richtungspfeile entlang der Route.
+  const angleDiff = (a,b) => {
+    const d = Math.abs(((a-b+540)%360)-180);
+    return d;
+  };
+  const kmBetween = (a,b) => geoKm({lat:a[1],lng:a[0]},{lat:b[1],lng:b[0]});
+
+  // Auf Hin-und-zurück-Passagen keine zwei gegensätzlichen Pfeile stapeln.
+  // Dort wird ein einzelnes Doppelpfeil-Symbol gezeigt.
   arrowFeatures = function(c) {
-    const fs = [];
+    const candidates = [];
     let acc = 0;
     for (let i = 1; i < (c?.length || 0); i++) {
-      acc += geoKm({lat:c[i-1][1],lng:c[i-1][0]},{lat:c[i][1],lng:c[i][0]});
-      if (acc >= 0.60) {
-        fs.push({
-          type:'Feature',
-          properties:{bearing:bearing(c[i-1],c[i])},
-          geometry:{type:'Point',coordinates:c[i]}
-        });
+      acc += kmBetween(c[i-1], c[i]);
+      if (acc >= 0.65) {
+        candidates.push({coord:c[i], bearing:bearing(c[i-1],c[i])});
         acc = 0;
       }
     }
-    return {type:'FeatureCollection',features:fs};
+
+    const kept = [];
+    for (const cand of candidates) {
+      let merged = false;
+      for (const old of kept) {
+        if (kmBetween(cand.coord, old.coord) > 0.14) continue;
+        if (angleDiff(cand.bearing, old.bearing) >= 120) {
+          old.symbol = '↔';
+          old.double = true;
+          merged = true;
+          break;
+        }
+        // Gleiche Richtung an nahezu derselben Stelle ebenfalls nicht doppelt zeichnen.
+        if (angleDiff(cand.bearing, old.bearing) <= 35) {
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) kept.push({...cand, symbol:'➤', double:false});
+    }
+
+    return {
+      type:'FeatureCollection',
+      features:kept.map(x => ({
+        type:'Feature',
+        properties:{bearing:x.bearing,symbol:x.symbol,double:x.double?1:0},
+        geometry:{type:'Point',coordinates:x.coord}
+      }))
+    };
   };
 
   function fixRouteArrows() {
     if (!map.getLayer('route-arrows')) return;
     try {
-      // Gegenüber der bisherigen Darstellung um 180° drehen.
+      map.setLayoutProperty('route-arrows', 'text-field', ['get','symbol']);
       map.setLayoutProperty('route-arrows', 'text-rotate', ['+', ['get','bearing'], 270]);
-      map.setLayoutProperty('route-arrows', 'text-size', 16);
+      map.setLayoutProperty('route-arrows', 'text-size', ['case',['==',['get','double'],1],18,16]);
       map.setLayoutProperty('route-arrows', 'text-allow-overlap', false);
       map.setLayoutProperty('route-arrows', 'text-ignore-placement', false);
     } catch {}

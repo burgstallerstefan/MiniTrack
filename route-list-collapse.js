@@ -6,12 +6,15 @@
   if (!routeInfo || !pointList) return;
 
   let collapsed = true;
-  const header = document.createElement('button');
-  header.id = 'routeListToggle';
-  header.type = 'button';
-  header.className = 'secondary';
-  header.style.cssText = 'width:100%;min-height:36px;margin:6px 0 0;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-weight:800;font-size:13px';
-  pointList.parentNode.insertBefore(header, pointList);
+
+  // Nur ein kleiner Pfeil oben rechts im Routenblock – kein eigener Punkte/Details-Balken mehr.
+  const toggle = document.createElement('button');
+  toggle.id = 'routeListToggle';
+  toggle.type = 'button';
+  toggle.title = 'Routendetails ein-/ausklappen';
+  toggle.setAttribute('aria-label','Routendetails ein-/ausklappen');
+  toggle.style.cssText = 'position:absolute;right:8px;top:7px;width:34px;height:34px;min-width:34px;padding:0;border:0;border-radius:50%;background:transparent;color:#444;font-size:22px;line-height:34px;font-weight:900;z-index:3';
+  routeInfo.appendChild(toggle);
 
   function countPoints() {
     return pointList.querySelectorAll('.route-order-row').length;
@@ -19,8 +22,9 @@
 
   function sync() {
     const count = countPoints();
-    header.style.display = count >= 2 ? 'flex' : 'none';
-    header.innerHTML = `<span>${collapsed ? 'Details' : `Punkte (${count})`}</span><span>${collapsed ? '▾' : '▴'}</span>`;
+    toggle.style.display = count >= 2 ? 'block' : 'none';
+    toggle.textContent = collapsed ? '⌄' : '⌃';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
 
     if (count < 2) {
       pointList.style.display = 'none';
@@ -51,7 +55,7 @@
     }
   }
 
-  header.addEventListener('click', e => {
+  toggle.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
     collapsed = !collapsed;

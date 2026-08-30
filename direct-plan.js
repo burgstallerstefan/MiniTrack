@@ -2,8 +2,7 @@
   let directPoints = [];
   let directMarkers = [];
   let calcToken = 0;
-  let insertAfter = null;
-  let activePopup = null;
+  let pendingAdd = false;
   let rebuildTimer = null;
   let activeRouteController = null;
   let routeCalculationId = 0;
@@ -16,6 +15,23 @@
     s.dataset.elevationUi = '1';
     document.body.appendChild(s);
   }
+
+  const routeInfo = $('routeInfo');
+  const routeActions = $('routeActions');
+  const startBtn = $('startRoute');
+  const clearBtn = $('clearRoute');
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  const addBtn = document.createElement('button');
+  addBtn.id = 'addRoutePoint';
+  addBtn.className = 'secondary';
+  addBtn.textContent = '＋ Hinzufügen';
+  if (routeActions) routeActions.insertBefore(addBtn, startBtn || routeActions.firstChild);
+
+  const pointList = document.createElement('div');
+  pointList.id = 'routePointList';
+  pointList.style.cssText = 'display:none;margin:10px 0 8px;border:1px solid #ddd;border-radius:12px;overflow:hidden;background:#fff';
+  routeActions?.parentNode?.insertBefore(pointList, routeActions);
 
   function routeCacheKey(points) {
     return points.map(p => `${(+p[0]).toFixed(5)},${(+p[1]).toFixed(5)}`).join('|');
@@ -46,7 +62,6 @@
     const key = routeCacheKey(points);
     const cached = cachedRoute(key);
     if (cached) return cached;
-
     const lonlats = points.map(p => `${p[0]},${p[1]}`).join('|');
     const url = 'https://brouter.de/brouter?lonlats=' + encodeURIComponent(lonlats) + '&profile=trekking&alternativeidx=0&format=geojson';
     const r = await fetch(url, {signal, cache:'no-store'});
@@ -60,7 +75,6 @@
     return value;
   }
 
-  // Während der Bearbeitung absichtlich NUR eine Route: schnell und stabil auf dem Handy.
   calculateRoutes = async function(points, baseName) {
     if (!Array.isArray(points) || points.length < 2) throw new Error('too few points');
     abortRouting();
@@ -70,47 +84,41 @@
     const signal = controller.signal;
     const timeout = setTimeout(() => controller.abort(), 12000);
     $('status').textContent = 'Berechne Wanderroute …';
-
     try {
       const main = await fetchMainRoute(points, signal);
       if (id !== routeCalculationId || signal.aborted) throw new DOMException('stale','AbortError');
-
       routeOptions = [main];
       routeBaseName = baseName;
       selectedRouteIndex = 0;
       routeCoords = main.coords;
       routeName = baseName;
-
-      // Route aktualisieren, aber die Karte NICHT bei jedem Ziehen neu verschieben/zoomen.
       if (map.getSource('alternatives')) map.getSource('alternatives').setData({type:'FeatureCollection',features:[]});
       showRoute(false);
-      $('routeTitle').textContent = baseName;
       updateRouteInfo(main);
-      $('routeInfo').style.display = 'block';
-      $('status').textContent = `${main.dist.toFixed(1)} km · Punkte verschieben oder Wegpunkt hinzufügen.`;
+      routeInfo.style.display = 'block';
+      if (startBtn) startBtn.disabled = false;
       return main;
-    } catch (e) {
-      if (e?.name === 'AbortError') return null;
-      if (id === routeCalculationId) $('status').textContent = 'Route konnte gerade nicht berechnet werden.';
-      throw e;
     } finally {
       clearTimeout(timeout);
       if (id === routeCalculationId) activeRouteController = null;
     }
   };
 
-  function closePointPopup() {
-    activePopup?.remove();
-    activePopup = null;
-  }
-
   function cancelScheduledRoute() {
     if (rebuildTimer) clearTimeout(rebuildTimer);
     rebuildTimer = null;
   }
 
+  function scheduleRebuild(delay = 160) {
+    cancelScheduledRoute();
+    if (directPoints.length < 2) return;
+    rebuildTimer = setTimeout(() => {
+      rebuildTimer = null;
+      rebuildDirectRoute();
+    }, delay);
+  }
+
   function clearDirectMarkers() {
-    closePointPopup();
     directMarkers.forEach(m => m.remove());
     directMarkers = [];
   }
@@ -121,95 +129,117 @@
     return String(i);
   }
 
-  function scheduleRebuild(delay = 220) {
-    cancelScheduledRoute();
-    if (directPoints.length < 2) return;
-    rebuildTimer = setTimeout(() => {
-      rebuildTimer = null;
-      rebuildDirectRoute();
-    }, delay);
+  function pointName(i) {
+    if (i === 0) return 'Start';
+    if (i === directPoints.length - 1) return 'Ziel';
+    return `Wegpunkt ${i}`;
   }
 
   function removePoint(i) {
     if (i < 0 || i >= directPoints.length) return;
     directPoints.splice(i, 1);
-    insertAfter = null;
+    pendingAdd = false;
     calcToken++;
     abortRouting();
     cancelScheduledRoute();
     renderDirectMarkers();
-    if (directPoints.length >= 2) scheduleRebuild(120);
+    renderPointList();
+    if (directPoints.length >= 2) scheduleRebuild(80);
     else {
       if (map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection',features:[]});
-      $('routeInfo').style.display = 'none';
-      $('status').textContent = directPoints.length ? 'Start gesetzt. Ziel auf der Karte antippen.' : 'Ersten Punkt als Start antippen.';
+      routeCoords = null;
+      if (startBtn) startBtn.disabled = true;
+      $('routeRemain').textContent = '—';
+      $('routeTitle').textContent = 'Route planen';
     }
   }
 
-  function beginWaypointInsert(afterIndex = null) {
-    if (directPoints.length < 2) {
-      $('status').textContent = 'Zuerst Start und Ziel setzen.';
-      return;
-    }
-    // Standard: neuen Wegpunkt direkt vor dem Ziel einfügen.
-    insertAfter = afterIndex === null ? Math.max(0, directPoints.length - 2) : afterIndex;
-    closePointPopup();
-    $('status').textContent = 'Wegpunkt: gewünschte Stelle auf der Karte antippen.';
+  function beginHandleDrag(ev, fromIndex) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const pointerId = ev.pointerId;
+    let targetIndex = fromIndex;
+    const rows = () => [...pointList.querySelectorAll('.route-order-row')];
+
+    const clearTargets = () => rows().forEach(r => r.style.background = '#fff');
+    const move = e => {
+      if (e.pointerId !== pointerId) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.route-order-row');
+      if (!el || !pointList.contains(el)) return;
+      const idx = Number(el.dataset.index);
+      if (!Number.isInteger(idx)) return;
+      targetIndex = idx;
+      clearTargets();
+      el.style.background = '#eaf2ff';
+    };
+    const up = e => {
+      if (e.pointerId !== pointerId) return;
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      clearTargets();
+      if (targetIndex !== fromIndex) {
+        const [p] = directPoints.splice(fromIndex, 1);
+        directPoints.splice(targetIndex, 0, p);
+        calcToken++;
+        abortRouting();
+        renderDirectMarkers();
+        renderPointList();
+        scheduleRebuild(80);
+      }
+    };
+    document.addEventListener('pointermove', move, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
   }
 
-  function openPointPopup(i, marker) {
-    closePointPopup();
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'min-width:190px;font:14px system-ui,sans-serif';
-    const title = document.createElement('div');
-    title.style.cssText = 'font-weight:800;margin-bottom:8px';
-    title.textContent = i === 0 ? 'Start' : (i === directPoints.length - 1 ? 'Ziel' : `Wegpunkt ${i}`);
+  function renderPointList() {
+    pointList.innerHTML = '';
+    pointList.style.display = directPoints.length ? 'block' : 'none';
+    directPoints.forEach((_, i) => {
+      const row = document.createElement('div');
+      row.className = 'route-order-row';
+      row.dataset.index = String(i);
+      row.style.cssText = 'display:grid;grid-template-columns:44px 34px 1fr 38px;align-items:center;min-height:48px;border-bottom:1px solid #eee;touch-action:none';
 
-    const add = document.createElement('button');
-    add.textContent = '+ Wegpunkt danach';
-    add.style.cssText = 'width:100%;min-height:40px;margin-bottom:6px;border:0;border-radius:9px;background:#1769d2;color:#fff;font-weight:750';
-    add.addEventListener('click', ev => {
-      ev.stopPropagation();
-      beginWaypointInsert(i);
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.textContent = '☰';
+      handle.title = 'Punkt verschieben';
+      handle.style.cssText = 'height:46px;border:0;background:transparent;font-size:24px;color:#666;touch-action:none;padding:0';
+      handle.addEventListener('pointerdown', e => beginHandleDrag(e, i));
+
+      const badge = document.createElement('div');
+      badge.textContent = pointLabel(i);
+      badge.style.cssText = 'width:26px;height:26px;border-radius:50%;border:2px solid #1769d2;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px';
+
+      const name = document.createElement('div');
+      name.textContent = pointName(i);
+      name.style.cssText = 'font-weight:750;font-size:14px;padding-left:6px';
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '×';
+      del.title = 'Punkt entfernen';
+      del.style.cssText = 'border:0;background:transparent;font-size:24px;color:#777;height:46px';
+      del.addEventListener('click', e => { e.stopPropagation(); removePoint(i); });
+
+      row.append(handle, badge, name, del);
+      pointList.appendChild(row);
     });
-
-    const del = document.createElement('button');
-    del.textContent = 'Punkt entfernen';
-    del.style.cssText = 'width:100%;min-height:40px;border:1px solid #ccc;border-radius:9px;background:#fff;color:#222;font-weight:700';
-    del.addEventListener('click', ev => {
-      ev.stopPropagation();
-      closePointPopup();
-      removePoint(i);
-    });
-
-    wrap.append(title, add, del);
-    activePopup = new maplibregl.Popup({offset:20, closeButton:true, closeOnClick:false})
-      .setLngLat(marker.getLngLat()).setDOMContent(wrap).addTo(map);
-    activePopup.on('close', () => { activePopup = null; });
   }
 
   function addDirectMarker(c, i) {
     const el = document.createElement('div');
-    el.style.cssText = 'width:30px;height:30px;border-radius:50%;background:white;border:3px solid #1769d2;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;box-shadow:0 2px 8px #555;touch-action:none;cursor:pointer';
+    el.style.cssText = 'width:30px;height:30px;border-radius:50%;background:white;border:3px solid #1769d2;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;box-shadow:0 2px 8px #555;touch-action:none';
     el.textContent = pointLabel(i);
     const marker = new maplibregl.Marker({element:el, draggable:true}).setLngLat(c).addTo(map);
-
-    marker.on('dragstart', () => {
-      closePointPopup();
-      cancelScheduledRoute();
-      abortRouting();
-    });
+    marker.on('dragstart', () => { cancelScheduledRoute(); abortRouting(); });
     marker.on('dragend', () => {
       const p = marker.getLngLat();
       directPoints[i] = [p.lng, p.lat];
-      insertAfter = null;
-      // Marker bleiben bestehen; nur Label ggf. aktualisieren.
-      el.textContent = pointLabel(i);
-      scheduleRebuild(180);
-    });
-    el.addEventListener('click', ev => {
-      ev.stopPropagation();
-      openPointPopup(i, marker);
+      renderPointList();
+      scheduleRebuild(100);
     });
     directMarkers.push(marker);
   }
@@ -227,84 +257,85 @@
       const o = await calculateRoutes(snapshot, 'Geplante Wanderung');
       if (!o || token !== calcToken) return;
       $('routeTitle').textContent = `${directPoints.length} Punkte · ${o.dist.toFixed(1)} km`;
-      $('status').textContent = `${o.dist.toFixed(1)} km · Wegpunkte ziehen, hinzufügen oder Start drücken.`;
+      $('status').textContent = `${o.dist.toFixed(1)} km · Punkte verschieben oder Start drücken.`;
     } catch (e) {
       if (e?.name === 'AbortError') return;
       if (token === calcToken) $('status').textContent = 'Route konnte gerade nicht berechnet werden.';
     }
   }
 
-  map.on('click', e => {
-    if (tracking || planning) return;
-    const target = e.originalEvent?.target;
-    if (target?.closest?.('.maplibregl-marker, .maplibregl-popup, button, input, label')) return;
+  function setGpsAsStartAndWaitForPoint() {
+    const ready = () => {
+      if (!gps) return;
+      if (!directPoints.length) {
+        directPoints = [[gps[0], gps[1]]];
+        renderDirectMarkers();
+        renderPointList();
+        routeInfo.style.display = 'block';
+        $('routeTitle').textContent = 'Route planen';
+        if (startBtn) startBtn.disabled = true;
+      }
+      pendingAdd = true;
+      $('status').textContent = directPoints.length === 1
+        ? 'Start = aktueller Standort. Ziel auf der Karte antippen.'
+        : 'Neuen Wegpunkt auf der Karte antippen.';
+    };
+    if (gps) ready();
+    else requestLocation(ready);
+  }
 
-    closePointPopup();
-    const c = [e.lngLat.lng, e.lngLat.lat];
-    if (insertAfter !== null && insertAfter >= 0 && insertAfter < directPoints.length) {
-      directPoints.splice(insertAfter + 1, 0, c);
-      insertAfter = null;
-    } else {
-      directPoints.push(c);
-    }
-    renderDirectMarkers();
-
-    if (directPoints.length === 1) {
-      $('status').textContent = 'Start gesetzt. Ziel auf der Karte antippen.';
-      return;
-    }
-    abortRouting();
-    scheduleRebuild(120);
+  addBtn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    setGpsAsStartAndWaitForPoint();
   });
 
-  $('clearRoute')?.addEventListener('click', () => {
+  map.on('click', e => {
+    if (tracking || planning || !pendingAdd) return;
+    const target = e.originalEvent?.target;
+    if (target?.closest?.('.maplibregl-marker, .maplibregl-popup, button, input, label')) return;
+    pendingAdd = false;
+    const c = [e.lngLat.lng, e.lngLat.lat];
+    if (directPoints.length < 2) directPoints.push(c);
+    else directPoints.splice(directPoints.length - 1, 0, c);
+    renderDirectMarkers();
+    renderPointList();
+    abortRouting();
+    scheduleRebuild(60);
+  });
+
+  clearBtn?.addEventListener('click', () => {
     directPoints = [];
-    insertAfter = null;
+    pendingAdd = false;
     calcToken++;
     abortRouting();
     cancelScheduledRoute();
     clearDirectMarkers();
-    $('status').textContent = 'Route gelöscht. Ersten Punkt als Start antippen.';
+    renderPointList();
   });
 
-  $('startRoute')?.addEventListener('click', () => {
+  startBtn?.addEventListener('click', () => {
     if (!routeCoords?.length) return;
     calcToken++;
     abortRouting();
     cancelScheduledRoute();
-    closePointPopup();
-    insertAfter = null;
+    pendingAdd = false;
     clearDirectMarkers();
+    pointList.style.display = 'none';
     const pos = gps || routeCoords[0];
     const b = routeCoords.length > 1 ? bearing(routeCoords[0], routeCoords[Math.min(8, routeCoords.length - 1)]) : 0;
-    map.easeTo({center:pos, zoom:Math.max(map.getZoom(),16), pitch:55, bearing:b, duration:500});
+    const use3D = window.miniTrackTerrain3D === true;
+    map.easeTo({center:pos, zoom:Math.max(map.getZoom(),16), pitch:use3D ? 55 : 0, bearing:b, duration:450});
     $('directionCard').style.display = 'block';
     $('directionText').textContent = 'Route folgen';
   });
 
-  const routeActions = $('routeActions');
-  if (routeActions && !$('addWaypoint')) {
-    const wp = document.createElement('button');
-    wp.id = 'addWaypoint';
-    wp.className = 'secondary';
-    wp.textContent = '＋ Wegpunkt';
-    wp.addEventListener('click', ev => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      beginWaypointInsert();
-    });
-    routeActions.insertBefore(wp, $('clearRoute'));
-  }
-  if (routeActions && !$('exportRouteGpx')) {
-    const btn = document.createElement('button');
-    btn.id = 'exportRouteGpx';
-    btn.className = 'secondary';
-    btn.textContent = '⬇ GPX';
-    routeActions.insertBefore(btn, $('clearRoute'));
-  }
+  if (startBtn) startBtn.disabled = true;
   if ($('saveTrack')) $('saveTrack').textContent = '⬇ GPX';
 
   map.on('load', () => {
-    if (!tracking) $('status').textContent = 'Tippe auf die Karte: erster Punkt = Start.';
+    // Beim Öffnen sofort Standort anfragen und dorthin springen.
+    if (!gps && !tracking) requestLocation();
+    if (!tracking) $('status').textContent = 'Standort wird geladen …';
   });
 })();

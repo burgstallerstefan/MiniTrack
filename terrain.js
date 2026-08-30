@@ -2,7 +2,60 @@
   let terrainOn = false;
   const TERRAIN_ID = 'terrain-dem';
   const HILLSHADE_ID = 'terrain-hillshade';
+  const BUILDINGS_3D_ID = 'minitrack-3d-buildings';
   window.miniTrackTerrain3D = false;
+
+  function remove3DBuildings() {
+    try { if (map.getLayer(BUILDINGS_3D_ID)) map.removeLayer(BUILDINGS_3D_ID); } catch {}
+  }
+
+  function findBuildingLayer() {
+    const layers = map.getStyle()?.layers || [];
+    return layers.find(l =>
+      l.id !== BUILDINGS_3D_ID &&
+      l.source && l['source-layer'] &&
+      /building/i.test(String(l['source-layer']))
+    ) || layers.find(l =>
+      l.id !== BUILDINGS_3D_ID &&
+      l.source &&
+      /building/i.test(String(l.id))
+    );
+  }
+
+  function add3DBuildings() {
+    if (map.getLayer(BUILDINGS_3D_ID)) return;
+    const base = findBuildingLayer();
+    if (!base?.source) return;
+
+    const layer = {
+      id: BUILDINGS_3D_ID,
+      type: 'fill-extrusion',
+      source: base.source,
+      minzoom: 14,
+      paint: {
+        'fill-extrusion-color': '#d8d3ca',
+        'fill-extrusion-height': [
+          'coalesce',
+          ['to-number', ['get', 'render_height']],
+          ['to-number', ['get', 'height']],
+          ['*', ['to-number', ['get', 'building:levels']], 3],
+          8
+        ],
+        'fill-extrusion-base': [
+          'coalesce',
+          ['to-number', ['get', 'render_min_height']],
+          ['to-number', ['get', 'min_height']],
+          0
+        ],
+        'fill-extrusion-opacity': 0.86
+      }
+    };
+    if (base['source-layer']) layer['source-layer'] = base['source-layer'];
+    if (base.filter) layer.filter = base.filter;
+
+    const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
+    try { map.addLayer(layer, firstSymbol); } catch {}
+  }
 
   function removeTerrainCompletely() {
     try { map.setTerrain(null); } catch {}
@@ -57,9 +110,11 @@
     if (terrainOn) {
       addTerrainSource();
       addHillshade();
+      add3DBuildings();
       map.setTerrain({ source: TERRAIN_ID, exaggeration: 1.65 });
       if (typeof map.setMaxPitch === 'function') map.setMaxPitch(85);
     } else {
+      remove3DBuildings();
       removeTerrainCompletely();
       try { map.jumpTo({ pitch: 0 }); } catch {}
     }
@@ -73,12 +128,14 @@
   }
 
   function init() {
+    remove3DBuildings();
     removeTerrainCompletely();
     applyTerrain();
     document.getElementById('terrainToggle')?.addEventListener('click', toggleTerrain);
     document.getElementById('quickTerrainBtn')?.addEventListener('click', toggleTerrain);
     map.on('styledata', () => {
       if (!terrainOn) {
+        remove3DBuildings();
         removeTerrainCompletely();
         syncButtons();
         return;
@@ -86,6 +143,7 @@
       try {
         if (!map.getSource(TERRAIN_ID)) addTerrainSource();
         if (!map.getLayer(HILLSHADE_ID)) addHillshade();
+        if (!map.getLayer(BUILDINGS_3D_ID)) add3DBuildings();
         map.setTerrain({ source: TERRAIN_ID, exaggeration: 1.65 });
       } catch {}
       syncButtons();

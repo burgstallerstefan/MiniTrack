@@ -78,19 +78,18 @@
     $('directionText').textContent = 'Route folgen';
   });
 
-  // Offener GPX-Export für Uhren und Navigations-Apps.
   const routeActions = $('routeActions');
   if (routeActions && !$('exportRouteGpx')) {
     const btn = document.createElement('button');
     btn.id = 'exportRouteGpx';
     btn.className = 'secondary';
-    btn.textContent = '⌚ GPX für Uhr';
+    btn.textContent = '⬇ GPX';
     routeActions.insertBefore(btn, $('clearRoute'));
   }
-  if ($('saveTrack')) $('saveTrack').textContent = '⌚ GPX speichern';
+  if ($('saveTrack')) $('saveTrack').textContent = '⬇ GPX';
   if (!document.querySelector('script[data-gpx-export]')) {
     const s = document.createElement('script');
-    s.src = 'gpx-export.js?v=20260830-1';
+    s.src = 'gpx-export.js?v=20260830-7';
     s.dataset.gpxExport = '1';
     document.body.appendChild(s);
   }

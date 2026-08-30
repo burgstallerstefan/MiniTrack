@@ -3,7 +3,7 @@
   const TERRAIN_ID = 'terrain-dem';
   const HILLSHADE_ID = 'terrain-hillshade';
 
-  function removeOldTerrain() {
+  function removeTerrainCompletely() {
     try { map.setTerrain(null); } catch {}
     try { if (map.getLayer(HILLSHADE_ID)) map.removeLayer(HILLSHADE_ID); } catch {}
     try { if (map.getSource(TERRAIN_ID)) map.removeSource(TERRAIN_ID); } catch {}
@@ -37,36 +37,58 @@
     }, firstSymbol);
   }
 
-  function applyTerrain() {
-    addTerrainSource();
-    addHillshade();
-    map.setTerrain(terrainOn ? { source: TERRAIN_ID, exaggeration: 1.65 } : null);
-    if (map.getLayer(HILLSHADE_ID)) {
-      map.setLayoutProperty(HILLSHADE_ID, 'visibility', terrainOn ? 'visible' : 'none');
+  function syncButtons() {
+    const panelBtn = document.getElementById('terrainToggle');
+    panelBtn?.classList.toggle('active', terrainOn);
+    if (panelBtn) panelBtn.textContent = terrainOn ? '✓ 3D Gelände' : '3D Gelände';
+
+    const quickBtn = document.getElementById('quickTerrainBtn');
+    quickBtn?.classList.toggle('active', terrainOn);
+    if (quickBtn) {
+      quickBtn.textContent = terrainOn ? '2D' : '3D';
+      quickBtn.title = terrainOn ? 'Auf schnelle 2D-Karte wechseln' : '3D-Gelände einschalten';
+      quickBtn.setAttribute('aria-label', quickBtn.title);
     }
-    if (typeof map.setMaxPitch === 'function') map.setMaxPitch(85);
-    const btn = document.getElementById('terrainToggle');
-    btn?.classList.toggle('active', terrainOn);
-    if (btn) btn.textContent = terrainOn ? '✓ 3D Gelände' : '3D Gelände';
+  }
+
+  function applyTerrain() {
+    if (terrainOn) {
+      addTerrainSource();
+      addHillshade();
+      map.setTerrain({ source: TERRAIN_ID, exaggeration: 1.65 });
+      if (typeof map.setMaxPitch === 'function') map.setMaxPitch(85);
+    } else {
+      // In 2D werden DEM und Hillshade komplett entfernt, damit das Handy sie nicht weiter rendert/lädt.
+      removeTerrainCompletely();
+      try { map.easeTo({ pitch: 0, duration: 250 }); } catch {}
+    }
+    syncButtons();
+  }
+
+  function toggleTerrain(e) {
+    e?.stopPropagation?.();
+    terrainOn = !terrainOn;
+    applyTerrain();
   }
 
   function init() {
-    removeOldTerrain();
+    removeTerrainCompletely();
     applyTerrain();
 
-    document.getElementById('terrainToggle')?.addEventListener('click', e => {
-      e.stopPropagation();
-      terrainOn = !terrainOn;
-      applyTerrain();
-    });
+    document.getElementById('terrainToggle')?.addEventListener('click', toggleTerrain);
+    document.getElementById('quickTerrainBtn')?.addEventListener('click', toggleTerrain);
 
     map.on('styledata', () => {
-      if (!terrainOn) return;
+      if (!terrainOn) {
+        syncButtons();
+        return;
+      }
       try {
         if (!map.getSource(TERRAIN_ID)) addTerrainSource();
         if (!map.getLayer(HILLSHADE_ID)) addHillshade();
         map.setTerrain({ source: TERRAIN_ID, exaggeration: 1.65 });
       } catch {}
+      syncButtons();
     });
   }
 

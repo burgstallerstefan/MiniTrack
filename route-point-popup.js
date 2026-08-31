@@ -22,9 +22,9 @@
     const rows = [...document.querySelectorAll('#routePointList .route-order-row')];
     const row = rows[i];
     const info = row?.children?.[2];
-    const name = info?.children?.[0]?.textContent?.trim() || (i === 0 ? 'Start' : (i === rows.length - 1 ? 'Ziel' : 'Wegpunkt'));
+    const name = info?.children?.[0]?.textContent?.trim() || `Punkt ${i + 1}`;
     const type = info?.children?.[1]?.textContent?.trim() || '';
-    return {name,type,count:rows.length};
+    return {name,type,count:rows.length,row};
   }
 
   document.addEventListener('click', e => {
@@ -42,7 +42,7 @@
     try { ll = map.unproject([r.left + r.width / 2, r.top + r.height / 2]); }
     catch { return; }
 
-    const {name,type,count} = pointInfo(i);
+    const {name,type,row} = pointInfo(i);
     closeMapPopups();
 
     const body = document.createElement('div');
@@ -64,6 +64,13 @@
     add.style.cssText = 'display:block;width:100%;margin-top:10px;min-height:40px';
     body.appendChild(add);
 
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'popbtn warn';
+    del.textContent = 'Löschen';
+    del.style.cssText = 'display:block;width:100%;margin-top:7px;min-height:40px';
+    body.appendChild(del);
+
     const popup = new maplibregl.Popup({closeButton:true,closeOnClick:false,offset:18})
       .setLngLat(ll)
       .setDOMContent(body)
@@ -72,11 +79,22 @@
     add.addEventListener('click', ev => {
       ev.preventDefault();
       ev.stopPropagation();
-      const newName = i === 0 ? 'Ziel' : (i === count - 1 ? 'Ziel' : name);
-      window.MiniTrackPlanner?.addPoi?.([ll.lng,ll.lat], {name:newName,type,cat:'map'});
+      window.MiniTrackPlanner?.addPoi?.([ll.lng,ll.lat], {name,type,cat:'map'});
       popup.remove();
       const status = document.getElementById('status');
-      if (status) status.textContent = i === 0 ? 'Startpunkt als neues Ziel ans Ende angehängt.' : 'Punkt ans Ende der Route angehängt.';
+      if (status) status.textContent = 'Punkt ans Ende der Route angehängt.';
+    });
+
+    del.addEventListener('click', ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const deleteButton = row?.querySelector('button[title="Punkt entfernen"]');
+      popup.remove();
+      if (deleteButton) {
+        deleteButton.click();
+        const status = document.getElementById('status');
+        if (status) status.textContent = 'Punkt gelöscht · Route wird neu berechnet.';
+      }
     });
   }, true);
 })();

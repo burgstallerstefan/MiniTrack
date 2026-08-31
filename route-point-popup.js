@@ -6,13 +6,13 @@
   }
 
   function routePointIndex(marker) {
-    const label = marker?.textContent?.trim() || '';
     const rows = [...document.querySelectorAll('#routePointList .route-order-row')];
     if (!rows.length) return null;
-    if (label === 'S') return 0;
-    if (label === 'Z') return rows.length - 1;
+    const explicit = Number(marker?.dataset?.routePointIndex);
+    if (Number.isInteger(explicit) && explicit >= 0 && explicit < rows.length) return explicit;
+    const label = marker?.textContent?.trim() || '';
     if (/^\d+$/.test(label)) {
-      const i = Number(label);
+      const i = Number(label) - 1;
       return i >= 0 && i < rows.length ? i : null;
     }
     return null;
@@ -24,16 +24,14 @@
     const info = row?.children?.[2];
     const name = info?.children?.[0]?.textContent?.trim() || `Punkt ${i + 1}`;
     const type = info?.children?.[1]?.textContent?.trim() || '';
-    return {name,type,count:rows.length,row};
+    return {name,type,row};
   }
 
   document.addEventListener('click', e => {
     const marker = e.target?.closest?.('.maplibregl-marker');
     if (!marker || marker.classList.contains('poi-marker')) return;
-
     const i = routePointIndex(marker);
     if (i == null) return;
-
     e.preventDefault();
     e.stopPropagation();
 

@@ -2,7 +2,7 @@
   let lastPoi = null;
 
   const style = document.createElement('style');
-  style.textContent = '.maplibregl-popup .fromBtn,.maplibregl-popup .routeBtn{display:none!important}';
+  style.textContent = '.maplibregl-popup .fromBtn,.maplibregl-popup .routeBtn{display:none!important}.maplibregl-popup .googleMapsLink{display:block;text-align:center;text-decoration:none;padding:9px 10px;border:1px solid #ccc;border-radius:9px;background:#fff;color:#1769d2;font-weight:800}';
   document.head.appendChild(style);
 
   function coordFromElement(el) {
@@ -16,9 +16,15 @@
   function markerType(marker) {
     if (marker.classList.contains('poi-hut')) return {type:'Hütte',cat:'huts'};
     if (marker.classList.contains('poi-alm')) return {type:'Alm / Alpe',cat:'alms'};
-    if (marker.classList.contains('poi-food')) return {type:'Berggasthaus',cat:'food'};
+    if (marker.classList.contains('poi-food')) return {type:'Gasthaus / Unterkunft',cat:'food'};
+    if (marker.classList.contains('poi-locality')) return {type:'Ort / Lokalität',cat:'localities'};
     if (marker.classList.contains('poi-peak')) return {type:'Gipfel',cat:'peaks'};
     return {type:'Punkt',cat:'poi'};
+  }
+
+  function googleMapsUrl(poi) {
+    const query = `${poi.name} ${poi.c[1]},${poi.c[0]}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
 
   document.addEventListener('click', e => {
@@ -65,6 +71,15 @@
       pop.querySelector('.maplibregl-popup-close-button')?.click();
     });
     actions.appendChild(add);
+
+    const google = document.createElement('a');
+    google.className = 'googleMapsLink';
+    google.textContent = 'In Google Maps öffnen';
+    google.href = googleMapsUrl(poi);
+    google.target = '_blank';
+    google.rel = 'noopener noreferrer';
+    actions.appendChild(google);
+
     body.appendChild(actions);
   }
 

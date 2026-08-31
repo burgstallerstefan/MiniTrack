@@ -1,8 +1,6 @@
 (() => {
   const isSharedOpen = /^#(?:r|route)=/.test(location.hash);
   let sharedCentered = false;
-  let pressTimer = null;
-  let pressStart = null;
 
   function normalizePointRows() {
     const rows = [...document.querySelectorAll('#routePointList .route-order-row')];
@@ -79,34 +77,47 @@
       .setDOMContent(body)
       .addTo(map);
     add.addEventListener('click', e => {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       window.MiniTrackPlanner?.addPoi?.([lngLat.lng,lngLat.lat], {name:'Punkt',type:'Kartenpunkt',cat:'map'});
       popup.remove();
     });
   }
 
+  // Android/touch: Popup erst NACH dem Loslassen öffnen. So bleibt keine aktive
+  // MapLibre-Geste hängen, während DOM/Popup unter dem Finger verändert wird.
   const canvas = map.getCanvas();
-  canvas.addEventListener('pointerdown', e => {
-    if (e.button != null && e.button !== 0) return;
-    if (e.target?.closest?.('.maplibregl-marker,.maplibregl-popup,button,input,label')) return;
-    pressStart = {x:e.clientX,y:e.clientY};
-    clearTimeout(pressTimer);
-    pressTimer = setTimeout(() => {
-      const rect = canvas.getBoundingClientRect();
-      const ll = map.unproject([e.clientX - rect.left, e.clientY - rect.top]);
-      showLongPressPopup(ll);
-      pressTimer = null;
-    }, 650);
+  let touchHold = null;
+
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1 || tracking || planning) { touchHold = null; return; }
+    const t = e.touches[0];
+    touchHold = {x:t.clientX, y:t.clientY, started:Date.now(), moved:false};
   }, {passive:true});
 
-  canvas.addEventListener('pointermove', e => {
-    if (!pressTimer || !pressStart) return;
-    if (Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y) > 12) {
-      clearTimeout(pressTimer); pressTimer = null;
-    }
+  canvas.addEventListener('touchmove', e => {
+    if (!touchHold || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (Math.hypot(t.clientX - touchHold.x, t.clientY - touchHold.y) > 14) touchHold.moved = true;
   }, {passive:true});
-  ['pointerup','pointercancel','pointerleave'].forEach(type => canvas.addEventListener(type, () => {
-    if (pressTimer) clearTimeout(pressTimer);
-    pressTimer = null; pressStart = null;
-  }, {passive:true}));
+
+  canvas.addEventListener('touchend', () => {
+    const hold = touchHold;
+    touchHold = null;
+    if (!hold || hold.moved || Date.now() - hold.started < 650) return;
+    const rect = canvas.getBoundingClientRect();
+    let ll;
+    try { ll = map.unproject([hold.x - rect.left, hold.y - rect.top]); } catch { return; }
+    setTimeout(() => showLongPressPopup(ll), 0);
+  }, {passive:true});
+
+  canvas.addEventListener('touchcancel', () => { touchHold = null; }, {passive:true});
+
+  // Maus/Trackpad: Rechtsklick entspricht Langdruck, ohne Touch-Code zu berühren.
+  if (window.matchMedia?.('(pointer:fine)').matches) {
+    map.on('contextmenu', e => {
+      try { e.originalEvent?.preventDefault?.(); } catch {}
+      showLongPressPopup(e.lngLat);
+    });
+  }
 })();

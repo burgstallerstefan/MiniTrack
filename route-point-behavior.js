@@ -84,40 +84,12 @@
     });
   }
 
-  // Android/touch: Popup erst NACH dem Loslassen öffnen. So bleibt keine aktive
-  // MapLibre-Geste hängen, während DOM/Popup unter dem Finger verändert wird.
-  const canvas = map.getCanvas();
-  let touchHold = null;
-
-  canvas.addEventListener('touchstart', e => {
-    if (e.touches.length !== 1 || tracking || planning) { touchHold = null; return; }
-    const t = e.touches[0];
-    touchHold = {x:t.clientX, y:t.clientY, started:Date.now(), moved:false};
-  }, {passive:true});
-
-  canvas.addEventListener('touchmove', e => {
-    if (!touchHold || e.touches.length !== 1) return;
-    const t = e.touches[0];
-    if (Math.hypot(t.clientX - touchHold.x, t.clientY - touchHold.y) > 14) touchHold.moved = true;
-  }, {passive:true});
-
-  canvas.addEventListener('touchend', () => {
-    const hold = touchHold;
-    touchHold = null;
-    if (!hold || hold.moved || Date.now() - hold.started < 650) return;
-    const rect = canvas.getBoundingClientRect();
-    let ll;
-    try { ll = map.unproject([hold.x - rect.left, hold.y - rect.top]); } catch { return; }
-    setTimeout(() => showLongPressPopup(ll), 0);
-  }, {passive:true});
-
-  canvas.addEventListener('touchcancel', () => { touchHold = null; }, {passive:true});
-
-  // Maus/Trackpad: Rechtsklick entspricht Langdruck, ohne Touch-Code zu berühren.
-  if (window.matchMedia?.('(pointer:fine)').matches) {
-    map.on('contextmenu', e => {
-      try { e.originalEvent?.preventDefault?.(); } catch {}
-      showLongPressPopup(e.lngLat);
-    });
-  }
+  // Kein eigener Touch-/Pointer-Timer mehr. Android erzeugt bei langem Druck
+  // ein contextmenu-Ereignis. Dadurch bleibt MapLibre komplett für Touch zuständig.
+  map.on('contextmenu', e => {
+    try { e.originalEvent?.preventDefault?.(); } catch {}
+    const target = e.originalEvent?.target;
+    if (target?.closest?.('.maplibregl-marker,.maplibregl-popup,button,input,label')) return;
+    showLongPressPopup(e.lngLat);
+  });
 })();

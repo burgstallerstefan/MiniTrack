@@ -8,13 +8,19 @@
     btn = document.createElement('button');
     btn.id = 'shareRoute';
     btn.className = 'secondary';
-    const start = document.getElementById('startRoute');
-    actions.insertBefore(btn, start || actions.firstChild);
     btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
       window.MiniTrackPlanner?.share?.();
     });
+  }
+
+  // Teilen immer direkt links neben Speichern platzieren.
+  const save = document.getElementById('exportRouteGpx');
+  if (save?.parentNode === actions) actions.insertBefore(btn, save);
+  else {
+    const start = document.getElementById('startRoute');
+    actions.insertBefore(btn, start || actions.firstChild);
   }
 
   btn.title = 'Route teilen';
@@ -25,6 +31,8 @@
   function sync() {
     const count = window.MiniTrackPlanner?.pointCount?.() ?? pointList?.querySelectorAll('.route-order-row').length ?? 0;
     btn.style.display = count >= 2 ? 'flex' : 'none';
+    const currentSave = document.getElementById('exportRouteGpx');
+    if (currentSave?.parentNode === actions && btn.nextSibling !== currentSave) actions.insertBefore(btn, currentSave);
   }
 
   if (pointList) new MutationObserver(sync).observe(pointList, {childList:true,subtree:true});

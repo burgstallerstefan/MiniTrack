@@ -16,6 +16,31 @@
     return mm ? `${hh} h ${mm} min` : `${hh} h`;
   }
 
+  function estimateDuration(dist, up, down) {
+    const d = Math.max(0, Number(dist) || 0);
+    const a = Math.max(0, Number(up) || 0);
+    const b = Math.max(0, Number(down) || 0);
+    const mode = window.MiniTrackActivity?.key || 'wandern';
+
+    // Praxisnahe Planungszeiten: Grundtempo plus Zuschläge für Höhenmeter.
+    // Bewusst konservativer als die alte 5-km/h-Naismith-Näherung.
+    switch (mode) {
+      case 'alpin':
+        return d / 3.5 + a / 500 + b / 900;
+      case 'spazieren':
+        return d / 4.5 + a / 700 + b / 1400;
+      case 'rennrad':
+        return d / 22 + a / 850 + b / 2500;
+      case 'gravel':
+        return d / 17 + a / 700 + b / 2000;
+      case 'mtb':
+        return d / 14 + a / 650 + b / 1700;
+      case 'wandern':
+      default:
+        return d / 4 + a / 600 + b / 1200;
+    }
+  }
+
   const routeGrid = document.querySelector('#routeInfo .routegrid');
   if (routeGrid) {
     routeGrid.style.gridTemplateColumns = 'repeat(4,1fr)';
@@ -90,7 +115,8 @@
         }
       }
     }
-    return { ...r, down };
+    const time = estimateDuration(r.dist, r.up, down);
+    return { ...r, down, time };
   };
 
   const originalUpdateRouteInfo = updateRouteInfo;

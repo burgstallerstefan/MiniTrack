@@ -22,22 +22,14 @@
     const b = Math.max(0, Number(down) || 0);
     const mode = window.MiniTrackActivity?.key || 'wandern';
 
-    // Praxisnahe Planungszeiten: Grundtempo plus Zuschläge für Höhenmeter.
-    // Bewusst konservativer als die alte 5-km/h-Naismith-Näherung.
     switch (mode) {
-      case 'alpin':
-        return d / 3.5 + a / 500 + b / 900;
-      case 'spazieren':
-        return d / 4.5 + a / 700 + b / 1400;
-      case 'rennrad':
-        return d / 22 + a / 850 + b / 2500;
-      case 'gravel':
-        return d / 17 + a / 700 + b / 2000;
-      case 'mtb':
-        return d / 14 + a / 650 + b / 1700;
+      case 'alpin': return d / 3.5 + a / 500 + b / 900;
+      case 'spazieren': return d / 4.5 + a / 700 + b / 1400;
+      case 'rennrad': return d / 22 + a / 850 + b / 2500;
+      case 'gravel': return d / 17 + a / 700 + b / 2000;
+      case 'mtb': return d / 14 + a / 650 + b / 1700;
       case 'wandern':
-      default:
-        return d / 4 + a / 600 + b / 1200;
+      default: return d / 4 + a / 600 + b / 1200;
     }
   }
 
@@ -51,13 +43,34 @@
 
   const routeInfo = document.getElementById('routeInfo');
   let profileWrap = document.getElementById('elevationProfile');
+  let profileOpen = false;
   if (routeInfo && !profileWrap) {
     profileWrap = document.createElement('div');
     profileWrap.id = 'elevationProfile';
-    profileWrap.style.cssText = 'display:none;margin:7px 0 2px;padding:7px 8px 5px;border:1px solid #e1e1e1;border-radius:10px;background:rgba(248,248,248,.96)';
-    profileWrap.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#666;margin-bottom:3px"><span>Höhenprofil</span><span id="elevationRange">—</span></div><svg id="elevationSvg" viewBox="0 0 320 72" preserveAspectRatio="none" style="display:block;width:100%;height:72px" aria-label="Höhenprofil der Route"></svg><div id="elevationEnds" style="display:flex;justify-content:space-between;font-size:10px;color:#777;margin-top:2px"><span>—</span><span>—</span></div>';
+    profileWrap.style.cssText = 'display:none;margin:7px 0 2px;border:1px solid #e1e1e1;border-radius:10px;background:rgba(248,248,248,.96);overflow:hidden';
+    profileWrap.innerHTML = `
+      <button id="elevationToggle" type="button" aria-expanded="false" style="width:100%;min-height:34px;border:0;background:transparent;display:flex;align-items:center;justify-content:space-between;padding:0 9px;font-weight:800;font-size:12px;color:#444">
+        <span>Höhenprofil</span><span id="elevationToggleIcon">▾</span>
+      </button>
+      <div id="elevationBody" style="display:none;padding:0 8px 6px">
+        <div style="display:flex;justify-content:flex-end;align-items:center;font-size:11px;color:#666;margin-bottom:3px"><span id="elevationRange">—</span></div>
+        <svg id="elevationSvg" viewBox="0 0 320 72" preserveAspectRatio="none" style="display:block;width:100%;height:72px" aria-label="Höhenprofil der Route"></svg>
+        <div id="elevationEnds" style="display:flex;justify-content:space-between;font-size:10px;color:#777;margin-top:2px"><span>—</span><span>—</span></div>
+      </div>`;
     const pointList = document.getElementById('routePointList');
     routeInfo.insertBefore(profileWrap, pointList || document.getElementById('routeActions'));
+
+    const toggle = document.getElementById('elevationToggle');
+    toggle?.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      profileOpen = !profileOpen;
+      const body = document.getElementById('elevationBody');
+      const icon = document.getElementById('elevationToggleIcon');
+      if (body) body.style.display = profileOpen ? 'block' : 'none';
+      if (icon) icon.textContent = profileOpen ? '▴' : '▾';
+      toggle.setAttribute('aria-expanded', String(profileOpen));
+    });
   }
 
   const trackGrid = document.querySelector('#trackPanel .trackstats');

@@ -7,7 +7,6 @@
 
   let collapsed = true;
 
-  // Nur ein kleiner Pfeil oben rechts im Routenblock – kein eigener Punkte/Details-Balken mehr.
   const toggle = document.createElement('button');
   toggle.id = 'routeListToggle';
   toggle.type = 'button';
@@ -20,8 +19,18 @@
     return pointList.querySelectorAll('.route-order-row').length;
   }
 
+  function enableTouchScroll() {
+    pointList.style.touchAction = 'pan-y';
+    pointList.querySelectorAll('.route-order-row').forEach(row => {
+      row.style.touchAction = 'pan-y';
+      const handle = row.querySelector('button');
+      if (handle) handle.style.touchAction = 'none';
+    });
+  }
+
   function sync() {
     const count = countPoints();
+    enableTouchScroll();
     toggle.style.display = count >= 2 ? 'block' : 'none';
     toggle.textContent = collapsed ? '⌄' : '⌃';
     toggle.setAttribute('aria-expanded', String(!collapsed));
@@ -46,11 +55,13 @@
     if (!collapsed && count >= 4) {
       pointList.style.maxHeight = '216px';
       pointList.style.overflowY = 'auto';
+      pointList.style.overflowX = 'hidden';
       pointList.style.overscrollBehavior = 'contain';
       pointList.style.webkitOverflowScrolling = 'touch';
     } else {
       pointList.style.maxHeight = '';
       pointList.style.overflowY = '';
+      pointList.style.overflowX = '';
       pointList.style.overscrollBehavior = '';
     }
   }
@@ -62,6 +73,6 @@
     sync();
   });
 
-  new MutationObserver(sync).observe(pointList, {childList:true});
+  new MutationObserver(sync).observe(pointList, {childList:true,subtree:true});
   sync();
 })();

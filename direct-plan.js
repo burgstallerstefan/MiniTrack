@@ -29,6 +29,13 @@
   addBtn.textContent = '＋ Hinzufügen';
   if (routeActions) routeActions.insertBefore(addBtn, startBtn || routeActions.firstChild);
 
+  const shareBtn = document.createElement('button');
+  shareBtn.id = 'shareRoute';
+  shareBtn.className = 'secondary';
+  shareBtn.textContent = 'Teilen';
+  shareBtn.style.display = 'none';
+  if (routeActions) routeActions.insertBefore(shareBtn, startBtn || routeActions.lastChild);
+
   const pointList = document.createElement('div');
   pointList.id = 'routePointList';
   pointList.style.cssText = 'display:none;margin:10px 0 8px;border:1px solid #ddd;border-radius:12px;overflow:hidden;background:#fff';
@@ -176,6 +183,7 @@
 
   function renderPointList() {
     pointList.innerHTML = ''; pointList.style.display = directPoints.length ? 'block' : 'none';
+    shareBtn.style.display = directPoints.length >= 2 ? '' : 'none';
     directPoints.forEach((_, i) => {
       const row = document.createElement('div');
       row.className = 'route-order-row'; row.dataset.index = String(i);
@@ -283,12 +291,116 @@
     $('status').textContent = `${directMeta[0].name} als Start gesetzt.`;
   }
 
+  function base64UrlEncode(value) {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+
+  function base64UrlDecode(value) {
+    let s = value.replace(/-/g,'+').replace(/_/g,'/');
+    while (s.length % 4) s += '=';
+    const binary = atob(s);
+    const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  function sharePayload() {
+    return {
+      v:1,
+      m:window.MiniTrackActivity?.key || 'wandern',
+      p:directPoints.map((c,i) => {
+        const meta = metaAt(i);
+        return [Number((+c[0]).toFixed(6)), Number((+c[1]).toFixed(6)), meta.name || '', meta.type || '', meta.cat || 'map'];
+      })
+    };
+  }
+
+  function shareUrl() {
+    const u = new URL(location.href);
+    u.hash = 'route=' + base64UrlEncode(sharePayload());
+    return u.toString();
+  }
+
+  function readSharedRoute() {
+    const match = location.hash.match(/^#route=([^&]+)/);
+    if (!match) return null;
+    try {
+      const data = base64UrlDecode(match[1]);
+      if (data?.v !== 1 || !Array.isArray(data.p) || data.p.length < 2 || data.p.length > 30) return null;
+      const points = [];
+      const meta = [];
+      for (const x of data.p) {
+        if (!Array.isArray(x) || !Number.isFinite(+x[0]) || !Number.isFinite(+x[1])) return null;
+        points.push([+x[0], +x[1]]);
+        meta.push({name:String(x[2] || ''), type:String(x[3] || ''), cat:String(x[4] || 'shared')});
+      }
+      return {mode:String(data.m || 'wandern'), points, meta};
+    } catch { return null; }
+  }
+
+  async function copyShareLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      $('status').textContent = 'MiniTrack-Link kopiert.';
+      return;
+    } catch {}
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); $('status').textContent = 'MiniTrack-Link kopiert.'; }
+    catch { $('status').textContent = 'Teilen auf diesem Gerät nicht möglich.'; }
+    ta.remove();
+  }
+
+  async function shareRoute() {
+    if (directPoints.length < 2) return;
+    const url = shareUrl();
+    const title = `MiniTrack · ${activityLabel()}`;
+    const text = `${activityLabel()}-Route mit ${directPoints.length} Punkten`;
+    if (navigator.share) {
+      try {
+        await navigator.share({title,text,url});
+        return;
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+    await copyShareLink(url);
+  }
+
+  function loadSharedRoute(shared) {
+    if (!shared) return false;
+    const modeInput = document.querySelector(`input[name="routeMode"][value="${CSS.escape(shared.mode)}"]`);
+    if (modeInput) {
+      modeInput.checked = true;
+      modeInput.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    directPoints = shared.points.map(p => [p[0],p[1]]);
+    directMeta = shared.meta.map((m,i) => ({...genericMeta(i),...m,cat:m.cat || 'shared'}));
+    pendingAdd = false;
+    renderDirectMarkers(); renderPointList();
+    routeInfo.style.display = 'block';
+    $('routeTitle').textContent = `${directPoints.length} Punkte`;
+    $('status').textContent = 'Geteilte MiniTrack-Route wird berechnet …';
+    try {
+      const bounds = new maplibregl.LngLatBounds();
+      directPoints.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds,{padding:{top:120,bottom:210,left:35,right:35},duration:500});
+    } catch {}
+    scheduleRebuild(120);
+    return true;
+  }
+
   window.MiniTrackPlanner = {
     hasStart: () => directPoints.length > 0,
     pointCount: () => directPoints.length,
     addPoi: addPoiPoint,
     setStartPoi: setPoiStart,
     focusPoint,
+    share: shareRoute,
+    getShareUrl: () => directPoints.length >= 2 ? shareUrl() : null,
     recalculate: label => {
       if (directPoints.length < 2) return false;
       calcToken++; abortRouting(); cancelScheduledRoute(); clearCalculatedRoute(false); routeInfo.style.display = 'block'; renderPointList(); scheduleRebuild(40, label || activityLabel());
@@ -303,6 +415,7 @@
   });
 
   addBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); setGpsAsStartAndWaitForPoint(); });
+  shareBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); shareRoute(); });
 
   map.on('click', e => {
     if (tracking || planning || !pendingAdd) return;
@@ -333,7 +446,9 @@
   if (startBtn) startBtn.disabled = true;
   if ($('saveTrack')) $('saveTrack').textContent = '⬇ GPX';
 
+  const sharedRoute = readSharedRoute();
   map.on('load', () => {
+    if (sharedRoute && loadSharedRoute(sharedRoute)) return;
     if (!gps && !tracking) requestLocation();
     if (!tracking) $('status').textContent = 'Standort wird geladen …';
   });

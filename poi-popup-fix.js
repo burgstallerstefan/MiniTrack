@@ -30,6 +30,7 @@
   document.addEventListener('click', e => {
     const marker = e.target?.closest?.('.poi-marker');
     if (!marker) return;
+    document.querySelectorAll('.maplibregl-popup[data-minitrack-new-poi-popup="1"]').forEach(p => p.remove());
     const c = coordFromElement(marker);
     if (c) lastPoi = {c, ...markerType(marker)};
   }, true);
@@ -40,6 +41,9 @@
     const oldRoute = pop.querySelector('.routeBtn');
     if (!oldFrom && !oldRoute) return;
 
+    document.querySelectorAll('.maplibregl-popup[data-minitrack-new-poi-popup="1"]').forEach(other => {
+      if (other !== pop) other.remove();
+    });
     pop.dataset.minitrackNewPoiPopup = '1';
     oldFrom?.remove(); oldRoute?.remove();
 

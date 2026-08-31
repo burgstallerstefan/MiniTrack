@@ -19,11 +19,12 @@
   }
 
   function pointInfo(i) {
-    const row = document.querySelector(`#routePointList .route-order-row[data-index="${i}"]`);
+    const rows = [...document.querySelectorAll('#routePointList .route-order-row')];
+    const row = rows[i];
     const info = row?.children?.[2];
-    const name = info?.children?.[0]?.textContent?.trim() || (i === 0 ? 'Start' : 'Wegpunkt');
+    const name = info?.children?.[0]?.textContent?.trim() || (i === 0 ? 'Start' : (i === rows.length - 1 ? 'Ziel' : 'Wegpunkt'));
     const type = info?.children?.[1]?.textContent?.trim() || '';
-    return {name,type};
+    return {name,type,count:rows.length};
   }
 
   document.addEventListener('click', e => {
@@ -41,7 +42,7 @@
     try { ll = map.unproject([r.left + r.width / 2, r.top + r.height / 2]); }
     catch { return; }
 
-    const {name,type} = pointInfo(i);
+    const {name,type,count} = pointInfo(i);
     closeMapPopups();
 
     const body = document.createElement('div');
@@ -71,10 +72,11 @@
     add.addEventListener('click', ev => {
       ev.preventDefault();
       ev.stopPropagation();
-      document.getElementById('addRoutePoint')?.click();
+      const newName = i === 0 ? 'Ziel' : (i === count - 1 ? 'Ziel' : name);
+      window.MiniTrackPlanner?.addPoi?.([ll.lng,ll.lat], {name:newName,type,cat:'map'});
       popup.remove();
       const status = document.getElementById('status');
-      if (status) status.textContent = 'Neuen Punkt auf der Karte antippen · wird am Ende angehängt.';
+      if (status) status.textContent = i === 0 ? 'Startpunkt als neues Ziel ans Ende angehängt.' : 'Punkt ans Ende der Route angehängt.';
     });
   }, true);
 })();

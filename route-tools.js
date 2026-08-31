@@ -67,17 +67,32 @@
   const centerBtn = document.createElement('button');
   centerBtn.id = 'routeCenterBtn';
   centerBtn.type = 'button';
-  centerBtn.title = 'Route zentrieren';
-  centerBtn.setAttribute('aria-label','Route zentrieren');
+  centerBtn.title = 'Zur Route';
+  centerBtn.setAttribute('aria-label','Zur Route');
   centerBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2v3m0 14v3M2 12h3m14 0h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
-  centerBtn.style.cssText = 'display:none;position:absolute;z-index:22;right:10px;bottom:118px;width:48px;height:48px;padding:0;border-radius:14px;background:rgba(255,255,255,.97);color:#222;border:1px solid #ccc;box-shadow:0 2px 10px rgba(0,0,0,.22)';
+  centerBtn.style.cssText = 'display:none;position:absolute;z-index:22;right:10px;top:122px;width:48px;height:48px;padding:0;border-radius:14px;background:rgba(255,255,255,.97);color:#222;border:1px solid #ccc;box-shadow:0 2px 10px rgba(0,0,0,.22)';
   document.body.appendChild(centerBtn);
 
   function hasRoute() {
     try { return !tracking && Array.isArray(routeCoords) && routeCoords.length > 1; }
     catch { return false; }
   }
-  function syncCenter() { centerBtn.style.display = hasRoute() ? 'block' : 'none'; }
+  function routeVisible() {
+    if (!hasRoute()) return true;
+    try {
+      const view = map.getBounds();
+      let inside = 0;
+      const step = Math.max(1, Math.floor(routeCoords.length / 80));
+      for (let i = 0; i < routeCoords.length; i += step) {
+        const c = routeCoords[i];
+        if (view.contains([c[0],c[1]])) inside++;
+      }
+      return inside > 0;
+    } catch { return true; }
+  }
+  function syncCenter() {
+    centerBtn.style.display = hasRoute() && !routeVisible() ? 'block' : 'none';
+  }
   function fitRoute() {
     if (!hasRoute()) return;
     try {
@@ -87,6 +102,8 @@
     } catch {}
   }
   centerBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); fitRoute(); });
-  setInterval(syncCenter, 500);
+  map.on('moveend', syncCenter);
+  map.on('zoomend', syncCenter);
+  setInterval(syncCenter, 800);
   syncCenter();
 })();

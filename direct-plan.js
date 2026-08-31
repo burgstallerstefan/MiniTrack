@@ -32,8 +32,10 @@
   const shareBtn = document.createElement('button');
   shareBtn.id = 'shareRoute';
   shareBtn.className = 'secondary';
-  shareBtn.textContent = 'Teilen';
-  shareBtn.style.display = 'none';
+  shareBtn.textContent = '↗';
+  shareBtn.title = 'Route teilen';
+  shareBtn.setAttribute('aria-label','Route teilen');
+  shareBtn.style.cssText = 'display:none;flex:0 0 46px;min-width:46px;font-size:22px;font-weight:800';
   if (routeActions) routeActions.insertBefore(shareBtn, startBtn || routeActions.lastChild);
 
   const pointList = document.createElement('div');

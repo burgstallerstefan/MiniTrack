@@ -279,8 +279,8 @@
     if (!Array.isArray(c)) return;
     ensureGpsStart(() => {
       const m = {name:meta.name || 'Punkt', type:meta.type || '', cat:meta.cat || 'poi'};
-      if (directPoints.length < 2) { directPoints.push([c[0],c[1]]); directMeta.push(m); }
-      else { directPoints.splice(directPoints.length - 1, 0, [c[0],c[1]]); directMeta.splice(directMeta.length - 1, 0, m); }
+      directPoints.push([c[0],c[1]]);
+      directMeta.push(m);
       pendingAdd = false; renderDirectMarkers(); renderPointList(); abortRouting(); clearCalculatedRoute(false); routeInfo.style.display = 'block'; scheduleRebuild(60);
     });
   }
@@ -425,9 +425,9 @@
     if (target?.closest?.('.maplibregl-marker, .maplibregl-popup, button, input, label')) return;
     pendingAdd = false;
     const c = [e.lngLat.lng, e.lngLat.lat];
-    const m = {name: directPoints.length < 2 ? 'Ziel' : `Wegpunkt ${directPoints.length - 1}`, type:'', cat:'map'};
-    if (directPoints.length < 2) { directPoints.push(c); directMeta.push(m); }
-    else { directPoints.splice(directPoints.length - 1, 0, c); directMeta.splice(directMeta.length - 1, 0, m); }
+    const m = {name: directPoints.length < 2 ? 'Ziel' : `Wegpunkt ${directPoints.length}`, type:'', cat:'map'};
+    directPoints.push(c);
+    directMeta.push(m);
     renderDirectMarkers(); renderPointList(); abortRouting(); clearCalculatedRoute(false); routeInfo.style.display = 'block'; scheduleRebuild(60);
   });
 

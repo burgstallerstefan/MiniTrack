@@ -56,9 +56,10 @@
     });
   }
 
-  function showLongPressPopup(lngLat) {
+  function showPointPopup(lngLat) {
     if (!lngLat || tracking || planning) return;
     closePopups();
+
     const body = document.createElement('div');
     body.style.cssText = 'min-width:190px';
     const title = document.createElement('b');
@@ -72,10 +73,12 @@
     add.textContent = '＋ Hinzufügen';
     add.style.cssText = 'display:block;width:100%;margin-top:10px;min-height:40px';
     body.append(title, sub, add);
+
     const popup = new maplibregl.Popup({closeButton:true,closeOnClick:false,offset:14})
       .setLngLat(lngLat)
       .setDOMContent(body)
       .addTo(map);
+
     add.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -84,12 +87,12 @@
     });
   }
 
-  // Kein eigener Touch-/Pointer-Timer mehr. Android erzeugt bei langem Druck
-  // ein contextmenu-Ereignis. Dadurch bleibt MapLibre komplett für Touch zuständig.
-  map.on('contextmenu', e => {
-    try { e.originalEvent?.preventDefault?.(); } catch {}
+  // Android-sicher: kein Langdruck/Timer/Touch-Hooking mehr.
+  // Ein normaler Tipp auf freie Karte öffnet das Hinzufügen-Popup.
+  map.on('click', e => {
+    if (tracking || planning) return;
     const target = e.originalEvent?.target;
     if (target?.closest?.('.maplibregl-marker,.maplibregl-popup,button,input,label')) return;
-    showLongPressPopup(e.lngLat);
+    showPointPopup(e.lngLat);
   });
 })();

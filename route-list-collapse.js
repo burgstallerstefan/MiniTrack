@@ -42,10 +42,22 @@
     toggle.textContent = collapsed ? '⌄' : '⌃';
     toggle.setAttribute('aria-expanded', String(!collapsed));
 
-    if (count < 2) {
+    if (count === 0) {
       pointList.style.display = 'none';
       if (routeActions) routeActions.style.display = 'none';
       if (note) note.style.display = 'none';
+      return;
+    }
+
+    // Ein einzelner Punkt muss immer sichtbar bleiben, damit er direkt gelöscht
+    // werden kann und damit klar bleibt, ob bereits ein erster Routenpunkt existiert.
+    if (count === 1) {
+      pointList.style.display = 'block';
+      if (routeActions) routeActions.style.display = 'flex';
+      if (note) note.style.display = 'none';
+      pointList.style.maxHeight = '';
+      pointList.style.overflowY = '';
+      pointList.style.overscrollBehavior = '';
       return;
     }
 

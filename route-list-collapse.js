@@ -2,6 +2,8 @@
   const routeInfo = document.getElementById('routeInfo');
   const pointList = document.getElementById('routePointList');
   const routeActions = document.getElementById('routeActions');
+  const routeGrid = routeInfo?.querySelector('.routegrid');
+  const routeTitle = document.getElementById('routeTitle');
   const note = routeInfo?.querySelector('.smallnote');
   if (!routeInfo || !pointList) return;
 
@@ -45,21 +47,27 @@
     if (count === 0) {
       pointList.style.display = 'none';
       if (routeActions) routeActions.style.display = 'none';
+      if (routeGrid) routeGrid.style.display = '';
       if (note) note.style.display = 'none';
       return;
     }
 
-    // Ein einzelner Punkt muss immer sichtbar bleiben, damit er direkt gelöscht
-    // werden kann und damit klar bleibt, ob bereits ein erster Routenpunkt existiert.
     if (count === 1) {
+      // Bei genau einem Punkt bleibt das ganze Karten-Kästchen sichtbar,
+      // aber es gibt keine berechnete Route und daher keine Streckenwerte/Aktionen.
+      routeInfo.style.display = 'block';
       pointList.style.display = 'block';
-      if (routeActions) routeActions.style.display = 'flex';
+      if (routeTitle) routeTitle.textContent = '1 Punkt';
+      if (routeGrid) routeGrid.style.display = 'none';
+      if (routeActions) routeActions.style.display = 'none';
       if (note) note.style.display = 'none';
       pointList.style.maxHeight = '';
       pointList.style.overflowY = '';
       pointList.style.overscrollBehavior = '';
       return;
     }
+
+    if (routeGrid) routeGrid.style.display = '';
 
     if (collapsed) {
       pointList.style.display = 'none';

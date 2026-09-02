@@ -117,7 +117,11 @@
       e.stopPropagation();
       popup.remove();
       requestAnimationFrame(() => {
-        window.MiniTrackPlanner?.addPoi?.([lngLat.lng,lngLat.lat], {name:'Punkt',type:'Kartenpunkt',cat:'map'});
+        const planner = window.MiniTrackPlanner;
+        const point = [lngLat.lng,lngLat.lat];
+        const meta = {name:'Punkt',type:'Kartenpunkt',cat:'map'};
+        if (!planner?.hasStart?.()) planner?.setStartPoi?.(point,meta);
+        else planner?.addPoi?.(point,meta);
       });
     }, {once:true});
   }

@@ -7,6 +7,8 @@
   const container = mapRef.getContainer();
   let editMarker = null;
   let editIndex = null;
+  let hiddenOriginal = null;
+  let ignoreClickUntil = 0;
 
   function status(text) {
     const el = document.getElementById('status');
@@ -26,17 +28,30 @@
   }
 
   function sourceSegments() {
+    const byIndex = new Map();
+    const add = f => {
+      const idx = Number(f?.properties?.segmentIndex);
+      const coords = f?.geometry?.coordinates;
+      if (!Number.isInteger(idx) || !Array.isArray(coords) || coords.length < 2) return;
+      if (!byIndex.has(idx)) byIndex.set(idx,f);
+    };
+
     try {
-      const fs = mapRef.querySourceFeatures?.('route-segments-hit') || [];
-      const byIndex = new Map();
-      for (const f of fs) {
-        const idx = Number(f?.properties?.segmentIndex);
-        const coords = f?.geometry?.coordinates;
-        if (!Number.isInteger(idx) || !Array.isArray(coords) || coords.length < 2) continue;
-        if (!byIndex.has(idx)) byIndex.set(idx,f);
-      }
-      return [...byIndex.values()];
-    } catch { return []; }
+      const src = mapRef.getSource('route-segments-hit');
+      const raw = src?._data || src?._options?.data;
+      if (raw?.type === 'FeatureCollection') raw.features?.forEach(add);
+      else if (raw?.type === 'Feature') add(raw);
+    } catch {}
+
+    try { (mapRef.querySourceFeatures?.('route-segments-hit') || []).forEach(add); } catch {}
+
+    if (!byIndex.size) {
+      try {
+        const rendered = mapRef.queryRenderedFeatures?.({layers:['route-segment-hit']}) || [];
+        rendered.forEach(add);
+      } catch {}
+    }
+    return [...byIndex.values()];
   }
 
   function distToScreenSegment(p,a,b) {
@@ -49,7 +64,7 @@
     return Math.hypot(p.x-x,p.y-y);
   }
 
-  function segmentAt(ev,maxPx=22) {
+  function segmentAt(ev,maxPx=24) {
     const p = mapPoint(ev);
     let best = null;
     for (const f of sourceSegments()) {
@@ -69,11 +84,29 @@
     return best;
   }
 
+  function originalPointElement(index) {
+    return container.querySelector(`[data-route-point-index="${index}"]`);
+  }
+
+  function hideOriginalPoint(index) {
+    const el = originalPointElement(index);
+    if (!el) return;
+    if (hiddenOriginal && hiddenOriginal !== el) hiddenOriginal.style.visibility='';
+    hiddenOriginal = el;
+    el.style.visibility='hidden';
+  }
+
+  function restoreOriginalPoint() {
+    if (hiddenOriginal) hiddenOriginal.style.visibility='';
+    hiddenOriginal = null;
+  }
+
   function lockEdit(showStatus=false) {
     if (!editMarker) return;
     editMarker.remove();
     editMarker = null;
     editIndex = null;
+    restoreOriginalPoint();
     if (showStatus) status('Punkt fixiert. Doppelklick auf Linie oder Punkt zum Bearbeiten.');
   }
 
@@ -89,6 +122,7 @@
     el.style.cssText = 'width:36px;height:36px;border-radius:50%;background:#e32626;border:3px solid #8b0000;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.45);cursor:grab;touch-action:none;z-index:20';
     el.textContent = String(index + 1);
 
+    hideOriginalPoint(index);
     editMarker = new maplibregl.Marker({element:el,draggable:true})
       .setLngLat(coord)
       .addTo(mapRef);
@@ -101,8 +135,11 @@
       el.style.cursor='grab';
       const ll=editMarker?.getLngLat();
       if (!ll || editIndex == null) return;
-      const ok=window.MiniTrackPlanner?.movePoint?.(editIndex,[ll.lng,ll.lat]);
-      if (ok) status(`Punkt ${editIndex+1} verschoben · Route wird neu berechnet. Rot = weiter verschiebbar.`);
+      const currentIndex = editIndex;
+      const ok=window.MiniTrackPlanner?.movePoint?.(currentIndex,[ll.lng,ll.lat]);
+      ignoreClickUntil = performance.now() + 450;
+      requestAnimationFrame(()=>hideOriginalPoint(currentIndex));
+      if (ok) status(`Punkt ${currentIndex+1} verschoben · Route wird neu berechnet. Rot = weiter verschiebbar.`);
     });
 
     status(`Punkt ${index+1} ist rot und verschiebbar. Klick woanders = fixieren.`);
@@ -119,7 +156,7 @@
   function onDoubleClick(ev) {
     if ((typeof tracking !== 'undefined' && tracking) || (typeof planning !== 'undefined' && planning)) return;
     const planner=window.MiniTrackPlanner;
-    if (!planner?.insertBetween || !planner?.movePoint) return;
+    if (!planner?.insertBetween || !planner?.movePoint || !planner?.getPoint) return;
 
     if (ev.target?.closest?.('.route-edit-marker')) {
       ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation?.();
@@ -128,14 +165,14 @@
 
     const pointIndex = routePointIndexFromTarget(ev.target);
     if (pointIndex != null) {
-      const coord=planner.getPoint?.(pointIndex);
+      const coord=planner.getPoint(pointIndex);
       if (!coord) return;
       ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation?.();
       activateEdit(pointIndex,coord);
       return;
     }
 
-    const hit=segmentAt(ev,22);
+    const hit=segmentAt(ev,24);
     if (!hit) return;
     const ll=lngLatFromEvent(ev);
     if (!ll) return;
@@ -144,16 +181,22 @@
     const newIndex=hit.index+1;
     const ok=planner.insertBetween(hit.index,[ll.lng,ll.lat]);
     if (ok) {
-      activateEdit(newIndex,[ll.lng,ll.lat]);
+      requestAnimationFrame(()=>activateEdit(newIndex,[ll.lng,ll.lat]));
       status(`Neuer Punkt ${newIndex+1} erstellt. Rot = verschiebbar; Klick woanders = fixieren.`);
     }
   }
 
   function onClick(ev) {
     if (!editMarker) return;
+    if (performance.now() < ignoreClickUntil) return;
     if (ev.target?.closest?.('.route-edit-marker')) return;
     lockEdit(true);
   }
+
+  const observer = new MutationObserver(()=>{
+    if (editIndex != null && editMarker) requestAnimationFrame(()=>hideOriginalPoint(editIndex));
+  });
+  observer.observe(container,{childList:true,subtree:true});
 
   container.addEventListener('dblclick',onDoubleClick,{capture:true,passive:false});
   container.addEventListener('click',onClick,{capture:true,passive:true});

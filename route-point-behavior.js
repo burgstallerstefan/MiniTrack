@@ -15,11 +15,11 @@
 
       const handle = row.children?.[0];
       if (handle instanceof HTMLElement) {
-        handle.style.display = 'none';
-        handle.style.pointerEvents = 'none';
-        handle.style.touchAction = 'pan-y';
+        handle.style.display = '';
+        handle.style.pointerEvents = 'auto';
+        handle.style.touchAction = 'none';
       }
-      row.style.gridTemplateColumns = '34px 1fr 38px';
+      row.style.gridTemplateColumns = '44px 34px 1fr 38px';
 
       const badge = row.children?.[1];
       const wantedNumber = String(i + 1);
@@ -122,7 +122,6 @@
     }, {once:true});
   }
 
-  // Doppeltipp auf freie Karte: kein eigenes Touch-/Pointer-Hooking.
   map.on('dblclick', e => {
     if (tracking || planning) return;
     const target = e.originalEvent?.target;

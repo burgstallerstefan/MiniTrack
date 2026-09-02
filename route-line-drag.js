@@ -1,36 +1,17 @@
 (() => {
   const mapRef = window.map || (typeof map !== 'undefined' ? map : null);
-  if (!mapRef || !mapRef.getCanvas || window.__miniTrackRouteLineDrag) return;
-  window.__miniTrackRouteLineDrag = true;
-
-  const originalOn = mapRef.on.bind(mapRef);
-  let suppressLegacySequence = false;
-  let suppressLegacyGlobals = 0;
-
-  // direct-plan.js besitzt noch den alten Layer-Drag. Dessen Start/Move/End-
-  // Registrierung wird abgefangen, damit nur dieses Eingabesystem aktiv ist.
-  mapRef.on = function(type, layerOrListener, listener) {
-    if ((type === 'mousedown' || type === 'touchstart') && layerOrListener === 'route-segment-hit') {
-      suppressLegacySequence = true;
-      suppressLegacyGlobals = 4;
-      return mapRef;
-    }
-    if (suppressLegacySequence && suppressLegacyGlobals > 0 && typeof layerOrListener === 'function' &&
-        ['mousemove','touchmove','mouseup','touchend'].includes(type)) {
-      suppressLegacyGlobals--;
-      if (!suppressLegacyGlobals) suppressLegacySequence = false;
-      return mapRef;
-    }
-    return originalOn(type, layerOrListener, listener);
-  };
+  if (!mapRef || !mapRef.getCanvas || window.__miniTrackRoutePointEdit) return;
+  window.__miniTrackRoutePointEdit = true;
 
   const canvas = mapRef.getCanvas();
-  let drag = null;
-  let hoverIndex = null;
-  let pointerId = null;
+  const container = mapRef.getContainer();
+  let editMarker = null;
+  let editIndex = null;
 
-  const fc = features => ({type:'FeatureCollection',features});
-  const empty = () => fc([]);
+  function status(text) {
+    const el = document.getElementById('status');
+    if (el) el.textContent = text;
+  }
 
   function mapPoint(ev) {
     const r = canvas.getBoundingClientRect();
@@ -39,7 +20,7 @@
 
   function lngLatFromEvent(ev) {
     try {
-      const p=mapPoint(ev);
+      const p = mapPoint(ev);
       return mapRef.unproject([p.x,p.y]);
     } catch { return null; }
   }
@@ -49,9 +30,9 @@
       const fs = mapRef.querySourceFeatures?.('route-segments-hit') || [];
       const byIndex = new Map();
       for (const f of fs) {
-        const idx=Number(f?.properties?.segmentIndex);
-        const coords=f?.geometry?.coordinates;
-        if (!Number.isInteger(idx) || !Array.isArray(coords) || coords.length<2) continue;
+        const idx = Number(f?.properties?.segmentIndex);
+        const coords = f?.geometry?.coordinates;
+        if (!Number.isInteger(idx) || !Array.isArray(coords) || coords.length < 2) continue;
         if (!byIndex.has(idx)) byIndex.set(idx,f);
       }
       return [...byIndex.values()];
@@ -68,131 +49,112 @@
     return Math.hypot(p.x-x,p.y-y);
   }
 
-  // Keine transparente MapLibre-Hit-Linie mehr voraussetzen. Wir vergleichen den
-  // Finger/Mauszeiger direkt mit der tatsächlichen Segmentgeometrie in Pixeln.
-  function segmentAt(ev, maxPx) {
-    const p=mapPoint(ev);
-    let best=null;
+  function segmentAt(ev,maxPx=22) {
+    const p = mapPoint(ev);
+    let best = null;
     for (const f of sourceSegments()) {
-      const coords=f.geometry.coordinates;
-      let d=Infinity;
+      const coords = f.geometry.coordinates;
+      let distance = Infinity;
       for (let i=1;i<coords.length;i++) {
         try {
           const a=mapRef.project(coords[i-1]);
           const b=mapRef.project(coords[i]);
-          d=Math.min(d,distToScreenSegment(p,a,b));
+          distance=Math.min(distance,distToScreenSegment(p,a,b));
         } catch {}
-        if (d<=maxPx) break;
       }
-      if (d<=maxPx && (!best || d<best.distance)) {
-        best={feature:f,index:Number(f.properties.segmentIndex),distance:d};
+      if (distance <= maxPx && (!best || distance < best.distance)) {
+        best={index:Number(f.properties.segmentIndex),distance};
       }
     }
     return best;
   }
 
-  function showHover(feature) {
-    try {
-      mapRef.getSource('route-segment-hover')?.setData(
-        feature ? fc([{type:'Feature',properties:{},geometry:feature.geometry}]) : empty()
-      );
-    } catch {}
+  function lockEdit(showStatus=false) {
+    if (!editMarker) return;
+    editMarker.remove();
+    editMarker = null;
+    editIndex = null;
+    if (showStatus) status('Punkt fixiert. Doppelklick auf Linie oder Punkt zum Bearbeiten.');
   }
 
-  function featureForIndex(index) {
-    return sourceSegments().find(f=>Number(f?.properties?.segmentIndex)===index) || null;
+  function activateEdit(index,coord) {
+    const planner = window.MiniTrackPlanner;
+    if (!planner?.movePoint || !Array.isArray(coord)) return false;
+    lockEdit(false);
+
+    editIndex = index;
+    const el = document.createElement('div');
+    el.className = 'route-edit-marker';
+    el.dataset.routeEditMarker = '1';
+    el.style.cssText = 'width:36px;height:36px;border-radius:50%;background:#e32626;border:3px solid #8b0000;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.45);cursor:grab;touch-action:none;z-index:20';
+    el.textContent = String(index + 1);
+
+    editMarker = new maplibregl.Marker({element:el,draggable:true})
+      .setLngLat(coord)
+      .addTo(mapRef);
+
+    editMarker.on('dragstart',()=>{
+      el.style.cursor='grabbing';
+      status(`Punkt ${index+1} verschieben …`);
+    });
+    editMarker.on('dragend',()=>{
+      el.style.cursor='grab';
+      const ll=editMarker?.getLngLat();
+      if (!ll || editIndex == null) return;
+      const ok=window.MiniTrackPlanner?.movePoint?.(editIndex,[ll.lng,ll.lat]);
+      if (ok) status(`Punkt ${editIndex+1} verschoben · Route wird neu berechnet. Rot = weiter verschiebbar.`);
+    });
+
+    status(`Punkt ${index+1} ist rot und verschiebbar. Klick woanders = fixieren.`);
+    return true;
   }
 
-  function showDraggedShape(index,ll) {
-    const current=featureForIndex(index);
-    const coords=current?.geometry?.coordinates;
-    if (!Array.isArray(coords)||coords.length<2||!ll) return;
-    const a=coords[0], b=coords[coords.length-1];
-    showHover({geometry:{type:'LineString',coordinates:[a,[ll.lng,ll.lat],b]}});
+  function routePointIndexFromTarget(target) {
+    const el = target?.closest?.('[data-route-point-index]');
+    if (!el) return null;
+    const idx = Number(el.dataset.routePointIndex);
+    return Number.isInteger(idx) && idx >= 0 ? idx : null;
   }
 
-  function restoreMapGestures() {
-    try { mapRef.dragPan.enable(); } catch {}
-    try { mapRef.touchZoomRotate.enable(); } catch {}
-    canvas.style.cursor='';
-  }
+  function onDoubleClick(ev) {
+    if ((typeof tracking !== 'undefined' && tracking) || (typeof planning !== 'undefined' && planning)) return;
+    const planner=window.MiniTrackPlanner;
+    if (!planner?.insertBetween || !planner?.movePoint) return;
 
-  function onPointerDown(ev) {
-    if (ev.button!=null && ev.button!==0) return;
-    if ((typeof tracking!=='undefined'&&tracking)||(typeof planning!=='undefined'&&planning)) return;
-    if (!window.MiniTrackPlanner?.insertBetween) return;
+    if (ev.target?.closest?.('.route-edit-marker')) {
+      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation?.();
+      return;
+    }
 
-    const maxPx=ev.pointerType==='touch'?24:14;
-    const hit=segmentAt(ev,maxPx);
+    const pointIndex = routePointIndexFromTarget(ev.target);
+    if (pointIndex != null) {
+      const coord=planner.getPoint?.(pointIndex);
+      if (!coord) return;
+      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation?.();
+      activateEdit(pointIndex,coord);
+      return;
+    }
+
+    const hit=segmentAt(ev,22);
     if (!hit) return;
-
-    ev.preventDefault();
-    ev.stopPropagation();
-    pointerId=ev.pointerId;
     const ll=lngLatFromEvent(ev);
-    drag={segmentIndex:hit.index,lastLngLat:ll,startX:ev.clientX,startY:ev.clientY};
-    hoverIndex=hit.index;
-    showHover(hit.feature);
-    canvas.style.cursor='grabbing';
-    try { mapRef.dragPan.disable(); } catch {}
-    try { mapRef.touchZoomRotate.disable(); } catch {}
-    try { canvas.setPointerCapture?.(pointerId); } catch {}
+    if (!ll) return;
 
-    const status=document.getElementById('status');
-    if(status) status.textContent=`Abschnitt ${hit.index+1}–${hit.index+2} ziehen …`;
-  }
-
-  function onPointerMove(ev) {
-    if (drag && ev.pointerId===pointerId) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const ll=lngLatFromEvent(ev);
-      if(!ll)return;
-      drag.lastLngLat=ll;
-      showDraggedShape(drag.segmentIndex,ll);
-      return;
-    }
-    if(ev.pointerType==='touch')return;
-    const hit=segmentAt(ev,12);
-    const idx=hit?.index??null;
-    if(idx!==hoverIndex){
-      hoverIndex=idx;
-      showHover(hit?.feature||null);
-      canvas.style.cursor=hit?'grab':'';
+    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation?.();
+    const newIndex=hit.index+1;
+    const ok=planner.insertBetween(hit.index,[ll.lng,ll.lat]);
+    if (ok) {
+      activateEdit(newIndex,[ll.lng,ll.lat]);
+      status(`Neuer Punkt ${newIndex+1} erstellt. Rot = verschiebbar; Klick woanders = fixieren.`);
     }
   }
 
-  function finishPointer(ev,cancelled=false) {
-    if(!drag||ev.pointerId!==pointerId)return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const d=drag;
-    drag=null;
-    hoverIndex=null;
-    try { canvas.releasePointerCapture?.(pointerId); } catch {}
-    pointerId=null;
-    showHover(null);
-    restoreMapGestures();
-    if(cancelled)return;
-
-    const movedPx=Math.hypot(ev.clientX-d.startX,ev.clientY-d.startY);
-    if(movedPx<6){
-      const status=document.getElementById('status');
-      if(status) status.textContent='Linie etwas weiter ziehen und dann loslassen.';
-      return;
-    }
-
-    const ll=lngLatFromEvent(ev)||d.lastLngLat;
-    if(!ll)return;
-    const ok=window.MiniTrackPlanner?.insertBetween?.(d.segmentIndex,[ll.lng,ll.lat]);
-    const status=document.getElementById('status');
-    if(status) status.textContent=ok
-      ? `Neuer Punkt ${d.segmentIndex+2} eingefügt · Teilstrecken werden neu berechnet.`
-      : 'Zwischenpunkt konnte nicht eingefügt werden.';
+  function onClick(ev) {
+    if (!editMarker) return;
+    if (ev.target?.closest?.('.route-edit-marker')) return;
+    lockEdit(true);
   }
 
-  canvas.addEventListener('pointerdown',onPointerDown,{capture:true,passive:false});
-  canvas.addEventListener('pointermove',onPointerMove,{capture:true,passive:false});
-  canvas.addEventListener('pointerup',ev=>finishPointer(ev,false),{capture:true,passive:false});
-  canvas.addEventListener('pointercancel',ev=>finishPointer(ev,true),{capture:true,passive:false});
+  container.addEventListener('dblclick',onDoubleClick,{capture:true,passive:false});
+  container.addEventListener('click',onClick,{capture:true,passive:true});
 })();

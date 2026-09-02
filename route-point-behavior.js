@@ -84,6 +84,9 @@
     if (!lngLat || tracking || planning) return;
     closePopups();
 
+    const planner = window.MiniTrackPlanner;
+    const isFirstPoint = !planner?.hasStart?.();
+
     const body = document.createElement('div');
     body.style.cssText = 'min-width:190px';
     const title = document.createElement('b');
@@ -94,7 +97,7 @@
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'popbtn good';
-    add.textContent = '＋ Hinzufügen';
+    add.textContent = isFirstPoint ? 'Start' : '＋ Hinzufügen';
     add.style.cssText = 'display:block;width:100%;margin-top:10px;min-height:40px';
 
     const google = document.createElement('a');
@@ -117,11 +120,11 @@
       e.stopPropagation();
       popup.remove();
       requestAnimationFrame(() => {
-        const planner = window.MiniTrackPlanner;
+        const activePlanner = window.MiniTrackPlanner;
         const point = [lngLat.lng,lngLat.lat];
         const meta = {name:'Punkt',type:'Kartenpunkt',cat:'map'};
-        if (!planner?.hasStart?.()) planner?.setStartPoi?.(point,meta);
-        else planner?.addPoi?.(point,meta);
+        if (!activePlanner?.hasStart?.()) activePlanner?.setStartPoi?.(point,meta);
+        else activePlanner?.addPoi?.(point,meta);
       });
     }, {once:true});
   }

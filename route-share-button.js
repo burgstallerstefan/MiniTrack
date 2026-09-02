@@ -2,6 +2,7 @@
   const actions = document.getElementById('routeActions');
   const pointList = document.getElementById('routePointList');
   if (!actions) return;
+  const planner = () => window.OutaboutPlanner || window.MiniTrackPlanner;
 
   let btn = document.getElementById('shareRoute');
   if (!btn) {
@@ -11,11 +12,10 @@
     btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
-      window.MiniTrackPlanner?.share?.();
+      planner()?.share?.();
     });
   }
 
-  // Teilen immer direkt links neben Speichern platzieren.
   const save = document.getElementById('exportRouteGpx');
   if (save?.parentNode === actions) actions.insertBefore(btn, save);
   else {
@@ -29,13 +29,13 @@
   btn.style.cssText = 'flex:0 0 46px;min-width:46px;width:46px;min-height:40px;padding:0;display:none;align-items:center;justify-content:center';
 
   function sync() {
-    const count = window.MiniTrackPlanner?.pointCount?.() ?? pointList?.querySelectorAll('.route-order-row').length ?? 0;
+    const count = planner()?.pointCount?.() ?? pointList?.querySelectorAll('.route-order-row').length ?? 0;
     btn.style.display = count >= 2 ? 'flex' : 'none';
     const currentSave = document.getElementById('exportRouteGpx');
     if (currentSave?.parentNode === actions && btn.nextSibling !== currentSave) actions.insertBefore(btn, currentSave);
   }
 
   if (pointList) new MutationObserver(sync).observe(pointList, {childList:true,subtree:true});
-  document.addEventListener('minitrack:activitychange', sync);
+  document.addEventListener('outabout:activitychange', sync);
   setTimeout(sync, 0);
 })();

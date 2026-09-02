@@ -16,7 +16,6 @@
   }
   if (save) save.textContent = 'Speichern';
 
-  // Entfernung steht bereits in der Statistik. Im Titel nur die Punktanzahl zeigen.
   const routeTitle = document.getElementById('routeTitle');
   function cleanRouteTitle() {
     if (!routeTitle) return;
@@ -28,14 +27,9 @@
     cleanRouteTitle();
   }
 
-  const angleDiff = (a,b) => {
-    const d = Math.abs(((a-b+540)%360)-180);
-    return d;
-  };
+  const angleDiff = (a,b) => Math.abs(((a-b+540)%360)-180);
   const kmBetween = (a,b) => geoKm({lat:a[1],lng:a[0]},{lat:b[1],lng:b[0]});
 
-  // Auf Hin-und-zurück-Passagen keine zwei gegensätzlichen Pfeile stapeln.
-  // Dort wird ein einzelnes Doppelpfeil-Symbol gezeigt.
   arrowFeatures = function(c) {
     const candidates = [];
     let acc = 0;
@@ -58,7 +52,6 @@
           merged = true;
           break;
         }
-        // Gleiche Richtung an nahezu derselben Stelle ebenfalls nicht doppelt zeichnen.
         if (angleDiff(cand.bearing, old.bearing) <= 35) {
           merged = true;
           break;
@@ -77,7 +70,7 @@
     };
   };
 
-  function fixRouteArrows() {
+  function fixRouteArrowLayout() {
     if (!map.getLayer('route-arrows')) return;
     try {
       map.setLayoutProperty('route-arrows', 'text-field', ['get','symbol']);
@@ -86,11 +79,8 @@
       map.setLayoutProperty('route-arrows', 'text-allow-overlap', false);
       map.setLayoutProperty('route-arrows', 'text-ignore-placement', false);
     } catch {}
-    if (routeCoords?.length && map.getSource('route-arrows')) {
-      try { map.getSource('route-arrows').setData(arrowFeatures(routeCoords)); } catch {}
-    }
   }
 
-  if (map.loaded()) fixRouteArrows(); else map.once('load', fixRouteArrows);
-  map.on('styledata', fixRouteArrows);
+  if (map.loaded()) fixRouteArrowLayout(); else map.once('load', fixRouteArrowLayout);
+  map.on('styledata', fixRouteArrowLayout);
 })();

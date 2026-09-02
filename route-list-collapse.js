@@ -7,7 +7,10 @@
   const note = routeInfo?.querySelector('.smallnote');
   if (!routeInfo || !pointList) return;
 
-  let collapsed = true;
+  const isSharedOpen = /^#(?:r|route)=/.test(location.hash);
+  let collapsed = isSharedOpen;
+  let previousCount = 0;
+  let sharedInitialLoaded = !isSharedOpen;
 
   const toggle = document.createElement('button');
   toggle.id = 'routeListToggle';
@@ -40,6 +43,19 @@
   function sync() {
     const count = countPoints();
     enableTouchScroll();
+
+    if (count > previousCount) {
+      if (!sharedInitialLoaded && previousCount === 0) {
+        // Eine frisch geöffnete geteilte Route startet bewusst eingeklappt.
+        collapsed = true;
+        sharedInitialLoaded = true;
+      } else {
+        // Neu hinzugefügte Punkte sollen sofort sichtbar sein.
+        collapsed = false;
+      }
+    }
+    previousCount = count;
+
     toggle.style.display = count >= 2 ? 'block' : 'none';
     toggle.textContent = collapsed ? '⌄' : '⌃';
     toggle.setAttribute('aria-expanded', String(!collapsed));

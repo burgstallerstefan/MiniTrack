@@ -87,34 +87,14 @@
     });
   }
 
-  // Sicherer Langdruck: während des Haltens läuft kein Timer und es wird nichts
-  // an MapLibre verändert. Erst nach dem Loslassen wird ausgewertet.
-  const canvas = map.getCanvas();
-  let hold = null;
-
-  canvas.addEventListener('pointerdown', e => {
-    if (tracking || planning || (e.button != null && e.button !== 0)) { hold = null; return; }
-    const target = e.target;
-    if (target?.closest?.('.maplibregl-marker,.maplibregl-popup,button,input,label')) { hold = null; return; }
-    hold = {id:e.pointerId, x:e.clientX, y:e.clientY, time:performance.now(), moved:false};
-  }, {passive:true});
-
-  canvas.addEventListener('pointermove', e => {
-    if (!hold || e.pointerId !== hold.id) return;
-    if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 12) hold.moved = true;
-  }, {passive:true});
-
-  canvas.addEventListener('pointerup', e => {
-    if (!hold || e.pointerId !== hold.id) return;
-    const h = hold;
-    hold = null;
-    if (h.moved || performance.now() - h.time < 700) return;
-    const rect = canvas.getBoundingClientRect();
-    let ll;
-    try { ll = map.unproject([h.x - rect.left, h.y - rect.top]); } catch { return; }
-    setTimeout(() => showPointPopup(ll), 120);
-  }, {passive:true});
-
-  canvas.addEventListener('pointercancel', () => { hold = null; }, {passive:true});
-  canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') hold = null; }, {passive:true});
+  // Android-stabil: kein Long-Press-, Pointer- oder Touch-Hooking.
+  // Doppeltipp auf freie Karte öffnet das Hinzufügen-Popup.
+  map.on('dblclick', e => {
+    if (tracking || planning) return;
+    const target = e.originalEvent?.target;
+    if (target?.closest?.('.maplibregl-marker,.maplibregl-popup,button,input,label')) return;
+    try { e.preventDefault?.(); } catch {}
+    try { e.originalEvent?.preventDefault?.(); } catch {}
+    showPointPopup(e.lngLat);
+  });
 })();

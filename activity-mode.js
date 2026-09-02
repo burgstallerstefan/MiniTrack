@@ -12,11 +12,13 @@
   const originalFilters = new Map();
   let current = 'wandern';
 
-  window.MiniTrackActivity = {
+  const activityApi = {
     get key(){ return current; },
     get config(){ return MODES[current]; },
     get profile(){ return MODES[current].profile; }
   };
+  window.OutaboutActivity = activityApi;
+  window.MiniTrackActivity = activityApi; // Legacy-Kompatibilität
 
   const style = document.createElement('style');
   style.textContent = `
@@ -117,7 +119,9 @@
     updateWayLabel();
     updateWayTiles();
     applyRoadSurfaceFilter();
-    document.dispatchEvent(new CustomEvent('minitrack:activitychange',{detail:{key,...cfg}}));
+    const detail = {key,...cfg};
+    document.dispatchEvent(new CustomEvent('outabout:activitychange',{detail}));
+    document.dispatchEvent(new CustomEvent('minitrack:activitychange',{detail})); // Legacy
     const s = document.getElementById('status');
     if (s) s.textContent = cfg.pavedOnly ? `${cfg.label} aktiv · Schotter wird vermieden.` : `${cfg.label} aktiv · passende Wege geladen.`;
   }

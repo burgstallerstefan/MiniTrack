@@ -2,7 +2,7 @@
   let lastPoi = null;
 
   const style = document.createElement('style');
-  style.textContent = '.maplibregl-popup .fromBtn,.maplibregl-popup .routeBtn{display:none!important}.maplibregl-popup .googleMapsLink{display:block;text-align:center;text-decoration:none;padding:9px 10px;border:1px solid #ccc;border-radius:9px;background:#fff;color:#1769d2;font-weight:800}';
+  style.textContent = '.maplibregl-popup .fromBtn,.maplibregl-popup .routeBtn{display:none!important}.maplibregl-popup .googleMapsLink{display:block;text-align:center;text-decoration:none;padding:9px 10px;border:1px solid #ccc;border-radius:9px;background:#fff;color:#1769d2;font-weight:800}.maplibregl-popup .maplibregl-popup-close-button{display:flex!important;align-items:center;justify-content:center;position:absolute!important;top:5px!important;right:5px!important;width:26px!important;height:26px!important;padding:0!important;border:0!important;border-radius:50%!important;background:rgba(255,255,255,.96)!important;color:#444!important;font-size:20px!important;line-height:1!important;font-weight:700!important;z-index:5!important}.maplibregl-popup-content{position:relative!important;padding-right:36px!important}';
   document.head.appendChild(style);
 
   function coordFromElement(el) {

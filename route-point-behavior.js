@@ -76,6 +76,10 @@
     });
   }
 
+  function googleMapsUrl(lngLat) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lngLat.lat},${lngLat.lng}`)}`;
+  }
+
   function showPointPopup(lngLat) {
     if (!lngLat || tracking || planning) return;
     closePopups();
@@ -92,7 +96,16 @@
     add.className = 'popbtn good';
     add.textContent = '＋ Hinzufügen';
     add.style.cssText = 'display:block;width:100%;margin-top:10px;min-height:40px';
-    body.append(title, sub, add);
+
+    const google = document.createElement('a');
+    google.className = 'googleMapsLink';
+    google.textContent = 'In Google Maps öffnen';
+    google.href = googleMapsUrl(lngLat);
+    google.target = '_blank';
+    google.rel = 'noopener noreferrer';
+    google.style.cssText = 'display:block;text-align:center;text-decoration:none;padding:9px 10px;border:1px solid #ccc;border-radius:9px;background:#fff;color:#1769d2;font-weight:800;margin-top:8px';
+
+    body.append(title, sub, add, google);
 
     const popup = new maplibregl.Popup({closeButton:true,closeOnClick:false,offset:14})
       .setLngLat(lngLat)

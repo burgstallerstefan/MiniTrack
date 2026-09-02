@@ -2,21 +2,23 @@
   let terrainOn = false;
   const TERRAIN_ID = 'terrain-dem';
   const HILLSHADE_ID = 'terrain-hillshade';
-  const BUILDINGS_3D_ID = 'minitrack-3d-buildings';
-  window.miniTrackTerrain3D = false;
+  const BUILDINGS_3D_ID = 'outabout-3d-buildings';
+  window.outaboutTerrain3D = false;
+  window.miniTrackTerrain3D = false; // Legacy-Kompatibilität
 
   function remove3DBuildings() {
     try { if (map.getLayer(BUILDINGS_3D_ID)) map.removeLayer(BUILDINGS_3D_ID); } catch {}
+    try { if (map.getLayer('minitrack-3d-buildings')) map.removeLayer('minitrack-3d-buildings'); } catch {}
   }
 
   function findBuildingLayer() {
     const layers = map.getStyle()?.layers || [];
     return layers.find(l =>
-      l.id !== BUILDINGS_3D_ID &&
+      l.id !== BUILDINGS_3D_ID && l.id !== 'minitrack-3d-buildings' &&
       l.source && l['source-layer'] &&
       /building/i.test(String(l['source-layer']))
     ) || layers.find(l =>
-      l.id !== BUILDINGS_3D_ID &&
+      l.id !== BUILDINGS_3D_ID && l.id !== 'minitrack-3d-buildings' &&
       l.source &&
       /building/i.test(String(l.id))
     );
@@ -92,7 +94,8 @@
   }
 
   function syncButtons() {
-    window.miniTrackTerrain3D = terrainOn;
+    window.outaboutTerrain3D = terrainOn;
+    window.miniTrackTerrain3D = terrainOn; // Legacy-Kompatibilität
     const panelBtn = document.getElementById('terrainToggle');
     panelBtn?.classList.toggle('active', terrainOn);
     if (panelBtn) panelBtn.textContent = terrainOn ? '✓ 3D Gelände' : '3D Gelände';

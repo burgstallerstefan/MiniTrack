@@ -21,10 +21,17 @@
 
   function enableTouchScroll() {
     pointList.style.touchAction = 'pan-y';
+    pointList.style.overflowX = 'hidden';
+    pointList.style.webkitOverflowScrolling = 'touch';
     pointList.querySelectorAll('.route-order-row').forEach(row => {
       row.style.touchAction = 'pan-y';
-      const handle = row.querySelector('button');
-      if (handle) handle.style.touchAction = 'none';
+      const handle = row.children?.[0];
+      if (handle instanceof HTMLElement) {
+        handle.style.display = 'none';
+        handle.style.pointerEvents = 'none';
+        handle.style.touchAction = 'pan-y';
+      }
+      row.style.gridTemplateColumns = '34px 1fr 38px';
     });
   }
 
@@ -55,13 +62,10 @@
     if (!collapsed && count >= 4) {
       pointList.style.maxHeight = '216px';
       pointList.style.overflowY = 'auto';
-      pointList.style.overflowX = 'hidden';
       pointList.style.overscrollBehavior = 'contain';
-      pointList.style.webkitOverflowScrolling = 'touch';
     } else {
       pointList.style.maxHeight = '';
       pointList.style.overflowY = '';
-      pointList.style.overflowX = '';
       pointList.style.overscrollBehavior = '';
     }
   }
@@ -73,6 +77,6 @@
     sync();
   });
 
-  new MutationObserver(sync).observe(pointList, {childList:true,subtree:true});
+  new MutationObserver(() => requestAnimationFrame(sync)).observe(pointList, {childList:true,subtree:true});
   sync();
 })();

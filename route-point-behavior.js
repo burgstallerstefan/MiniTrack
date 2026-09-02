@@ -3,21 +3,37 @@
   let sharedCentered = false;
 
   function normalizePointRows() {
-    const rows = [...document.querySelectorAll('#routePointList .route-order-row')];
+    const list = document.getElementById('routePointList');
+    if (!list) return;
+    list.style.touchAction = 'pan-y';
+    list.style.overflowX = 'hidden';
+    list.style.webkitOverflowScrolling = 'touch';
+
+    const rows = [...list.querySelectorAll('.route-order-row')];
     rows.forEach((row, i) => {
       row.style.touchAction = 'pan-y';
-      const handle = row.querySelector('button');
-      if (handle) handle.style.touchAction = 'none';
+
+      const handle = row.children?.[0];
+      if (handle instanceof HTMLElement) {
+        handle.style.display = 'none';
+        handle.style.pointerEvents = 'none';
+        handle.style.touchAction = 'pan-y';
+      }
+      row.style.gridTemplateColumns = '34px 1fr 38px';
+
+      const badge = row.children?.[1];
+      const wantedNumber = String(i + 1);
+      if (badge && badge.textContent !== wantedNumber) badge.textContent = wantedNumber;
+
       const info = row.children?.[2];
       const name = info?.children?.[0];
       const type = info?.children?.[1]?.textContent?.trim() || '';
       if (!name) return;
       const raw = name.textContent.trim();
-      if ((raw === 'Start' || raw === 'Ziel' || /^Wegpunkt \d+$/.test(raw)) && !type) {
-        name.textContent = `Punkt ${i + 1}`;
-      } else if (raw === 'Start' && type === 'Aktueller Standort') {
-        name.textContent = 'Aktueller Standort';
-      }
+      let wanted = raw;
+      if ((raw === 'Start' || raw === 'Ziel' || /^Wegpunkt \d+$/.test(raw)) && !type) wanted = `Punkt ${i + 1}`;
+      else if (raw === 'Start' && type === 'Aktueller Standort') wanted = 'Aktueller Standort';
+      if (wanted !== raw) name.textContent = wanted;
     });
   }
 
@@ -33,10 +49,15 @@
 
   const list = document.getElementById('routePointList');
   if (list) {
-    list.style.touchAction = 'pan-y';
+    let normalizing = false;
     new MutationObserver(() => {
-      normalizePointRows();
-      centerSharedRouteOnce();
+      if (normalizing) return;
+      normalizing = true;
+      requestAnimationFrame(() => {
+        normalizePointRows();
+        centerSharedRouteOnce();
+        normalizing = false;
+      });
     }).observe(list, {childList:true,subtree:true});
     normalizePointRows();
   }
@@ -44,7 +65,6 @@
   const routeInfo = document.getElementById('routeInfo');
   if (routeInfo) new MutationObserver(centerSharedRouteOnce).observe(routeInfo, {attributes:true,subtree:true,childList:true});
   const centerPoll = setInterval(() => {
-    normalizePointRows();
     centerSharedRouteOnce();
     if (sharedCentered) clearInterval(centerPoll);
   }, 350);
@@ -82,13 +102,14 @@
     add.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
-      window.MiniTrackPlanner?.addPoi?.([lngLat.lng,lngLat.lat], {name:'Punkt',type:'Kartenpunkt',cat:'map'});
       popup.remove();
-    });
+      requestAnimationFrame(() => {
+        window.MiniTrackPlanner?.addPoi?.([lngLat.lng,lngLat.lat], {name:'Punkt',type:'Kartenpunkt',cat:'map'});
+      });
+    }, {once:true});
   }
 
-  // Android-stabil: kein Long-Press-, Pointer- oder Touch-Hooking.
-  // Doppeltipp auf freie Karte öffnet das Hinzufügen-Popup.
+  // Doppeltipp auf freie Karte: kein eigenes Touch-/Pointer-Hooking.
   map.on('dblclick', e => {
     if (tracking || planning) return;
     const target = e.originalEvent?.target;

@@ -27,6 +27,13 @@
     return {name,type,row};
   }
 
+  function googleMapsUrl(ll, name) {
+    const query = name && !/^Punkt \d+$/.test(name)
+      ? `${name} ${ll.lat},${ll.lng}`
+      : `${ll.lat},${ll.lng}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+
   document.addEventListener('click', e => {
     const marker = e.target?.closest?.('.maplibregl-marker');
     if (!marker || marker.classList.contains('poi-marker')) return;
@@ -61,6 +68,15 @@
     add.textContent = '＋ Hinzufügen';
     add.style.cssText = 'display:block;width:100%;margin-top:10px;min-height:40px';
     body.appendChild(add);
+
+    const google = document.createElement('a');
+    google.className = 'googleMapsLink';
+    google.textContent = 'In Google Maps öffnen';
+    google.href = googleMapsUrl(ll, name);
+    google.target = '_blank';
+    google.rel = 'noopener noreferrer';
+    google.style.cssText = 'display:block;text-align:center;text-decoration:none;padding:9px 10px;border:1px solid #ccc;border-radius:9px;background:#fff;color:#1769d2;font-weight:800;margin-top:7px';
+    body.appendChild(google);
 
     const del = document.createElement('button');
     del.type = 'button';

@@ -151,7 +151,6 @@
     if (!map.getSource('route-segment-hover')) map.addSource('route-segment-hover',{type:'geojson',data:emptyFc()});
     if (!map.getLayer('route-segment-hover')) map.addLayer({id:'route-segment-hover',type:'line',source:'route-segment-hover',paint:{'line-width':10,'line-color':'#1769d2','line-opacity':.48}});
     ['route-outline','route-line','route-fallback-outline','route-fallback-line','route-segment-hover','route-segment-hit','route-arrows'].forEach(id=>{try{if(map.getLayer(id))map.moveLayer(id)}catch{}});
-    setupSegmentEditor();
   }
 
   function featureCollection(fs) { return {type:'FeatureCollection',features:fs}; }
@@ -283,7 +282,7 @@
     try {
       const o=await calculateRoutes(snapshot,`Geplante ${modeLabel}-Route`); if(!o||token!==calcToken)return;
       $('routeTitle').textContent=`${directPoints.length} Punkte · ${o.dist.toFixed(1)} km`;
-      if(!o.failedCount)$('status').textContent=`${modeLabel}: ${o.dist.toFixed(1)} km · Linie ziehen = Zwischenpunkt.`;
+      if(!o.failedCount)$('status').textContent=`${modeLabel}: ${o.dist.toFixed(1)} km · Doppelklick auf Linie = Zwischenpunkt bearbeiten.`;
     } catch(e) {
       if(e?.name==='AbortError')return;
       if(token===calcToken){clearCalculatedRoute(false);routeInfo.style.display='block';renderPointList();$('routeTitle').textContent=`${directPoints.length} Punkte · ${modeLabel}`;$('status').textContent=`Route für ${modeLabel} nicht möglich.`}
@@ -306,48 +305,21 @@
     failedSegments=new Set(); calcToken++; abortRouting(); cancelScheduledRoute(); clearCalculatedRoute(false); renderDirectMarkers(); renderPointList(); routeInfo.style.display='block'; scheduleRebuild(60); return true;
   }
 
+  function movePoint(index,c) {
+    if(!Array.isArray(c)||index<0||index>=directPoints.length||!Number.isFinite(+c[0])||!Number.isFinite(+c[1]))return false;
+    directPoints[index]=[+c[0],+c[1]];
+    failedSegments=new Set(); calcToken++; abortRouting(); cancelScheduledRoute();
+    clearCalculatedRoute(false); renderDirectMarkers(); renderPointList(); routeInfo.style.display='block';
+    if(directPoints.length>=2) scheduleRebuild(60);
+    else { $('routeTitle').textContent='1 Punkt'; if(startBtn)startBtn.disabled=true; }
+    return true;
+  }
+
   function hoverFeature(f) {
     try { map.getSource('route-segment-hover')?.setData(f?featureCollection([{type:'Feature',properties:{},geometry:f.geometry}]):emptyFc()); } catch {}
   }
 
-  function setupSegmentEditor() {
-    if(segmentEditorReady||!map.getLayer('route-segment-hit'))return;
-    segmentEditorReady=true;
-    const canvas=map.getCanvas();
-    map.on('mouseenter','route-segment-hit',e=>{canvas.style.cursor='grab';hoverFeature(e.features?.[0])});
-    map.on('mousemove','route-segment-hit',e=>{if(!segmentDrag)hoverFeature(e.features?.[0])});
-    map.on('mouseleave','route-segment-hit',()=>{if(!segmentDrag){canvas.style.cursor='';hoverFeature(null)}});
-
-    const start=e=>{
-      if(tracking||planning||segmentDrag)return;
-      const f=e.features?.[0]; const idx=Number(f?.properties?.segmentIndex);
-      if(!Number.isInteger(idx)||idx<0||idx>=directPoints.length-1)return;
-      try{e.preventDefault?.();e.originalEvent?.preventDefault?.()}catch{}
-      segmentDrag={segmentIndex:idx,lngLat:e.lngLat};
-      canvas.style.cursor='grabbing'; hoverFeature(f);
-      try{map.dragPan.disable()}catch{}; try{map.touchZoomRotate.disable()}catch{};
-    };
-    map.on('mousedown','route-segment-hit',start);
-    map.on('touchstart','route-segment-hit',start);
-
-    const move=e=>{
-      if(!segmentDrag||!e.lngLat)return;
-      segmentDrag.lngLat=e.lngLat;
-      const i=segmentDrag.segmentIndex,a=directPoints[i],b=directPoints[i+1],p=[e.lngLat.lng,e.lngLat.lat];
-      hoverFeature({geometry:{type:'LineString',coordinates:[a,p,b]}});
-      try{e.preventDefault?.();e.originalEvent?.preventDefault?.()}catch{}
-    };
-    map.on('mousemove',move); map.on('touchmove',move);
-
-    const end=e=>{
-      if(!segmentDrag)return;
-      const d=segmentDrag; segmentDrag=null;
-      const ll=e?.lngLat||d.lngLat; canvas.style.cursor=''; hoverFeature(null);
-      try{map.dragPan.enable()}catch{}; try{map.touchZoomRotate.enable()}catch{};
-      if(ll)insertPointBetween(d.segmentIndex,[ll.lng,ll.lat]);
-    };
-    map.on('mouseup',end); map.on('touchend',end);
-  }
+  function setupSegmentEditor() {}
 
   function base64UrlEncode(value){const bytes=new TextEncoder().encode(JSON.stringify(value));let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
   function base64UrlDecode(value){let s=value.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const binary=atob(s),bytes=Uint8Array.from(binary,ch=>ch.charCodeAt(0));return JSON.parse(new TextDecoder().decode(bytes))}
@@ -358,7 +330,19 @@
   async function shareRoute(){if(directPoints.length<2)return;const url=shareUrl(),title=`MiniTrack · ${activityLabel()}`,text=`${activityLabel()}-Route mit ${directPoints.length} Punkten`;if(navigator.share){try{await navigator.share({title,text,url});return}catch(e){if(e?.name==='AbortError')return}}await copyShareLink(url)}
   function loadSharedRoute(shared){if(!shared)return false;const modeInput=document.querySelector(`input[name="routeMode"][value="${CSS.escape(shared.mode)}"]`);if(modeInput){modeInput.checked=true;modeInput.dispatchEvent(new Event('change',{bubbles:true}))}directPoints=shared.points.map(p=>[p[0],p[1]]);directMeta=shared.meta.map((m,i)=>({...genericMeta(i),...m,cat:m.cat||'shared'}));pendingAdd=false;renderDirectMarkers();renderPointList();routeInfo.style.display='block';$('routeTitle').textContent=`${directPoints.length} Punkte`;$('status').textContent='Geteilte MiniTrack-Route wird berechnet …';try{const bounds=new maplibregl.LngLatBounds();directPoints.forEach(p=>bounds.extend(p));map.fitBounds(bounds,{padding:{top:120,bottom:210,left:35,right:35},duration:500})}catch{}scheduleRebuild(120);return true}
 
-  window.MiniTrackPlanner={hasStart:()=>directPoints.length>0,pointCount:()=>directPoints.length,addPoi:addPoiPoint,setStartPoi:setPoiStart,focusPoint,share:shareRoute,getShareUrl:()=>directPoints.length>=2?shareUrl():null,insertBetween:insertPointBetween,recalculate:label=>{if(directPoints.length<2)return false;calcToken++;abortRouting();cancelScheduledRoute();clearCalculatedRoute(false);routeInfo.style.display='block';renderPointList();scheduleRebuild(40,label||activityLabel());return true}};
+  window.MiniTrackPlanner={
+    hasStart:()=>directPoints.length>0,
+    pointCount:()=>directPoints.length,
+    getPoint:index=>directPoints[index]?[directPoints[index][0],directPoints[index][1]]:null,
+    addPoi:addPoiPoint,
+    setStartPoi:setPoiStart,
+    focusPoint,
+    share:shareRoute,
+    getShareUrl:()=>directPoints.length>=2?shareUrl():null,
+    insertBetween:insertPointBetween,
+    movePoint,
+    recalculate:label=>{if(directPoints.length<2)return false;calcToken++;abortRouting();cancelScheduledRoute();clearCalculatedRoute(false);routeInfo.style.display='block';renderPointList();scheduleRebuild(40,label||activityLabel());return true}
+  };
 
   document.addEventListener('minitrack:activitychange',e=>{if(directPoints.length<2)return;window.MiniTrackPlanner.recalculate(e.detail?.label||activityLabel())});
   addBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setGpsAsStartAndWaitForPoint()});

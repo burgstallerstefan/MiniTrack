@@ -1,9 +1,16 @@
 (() => {
-  const KEY = 'minitrack.route.v1';
-  const RESTORE_FLAG = 'minitrack.localRestore';
-  const planner = window.MiniTrackPlanner;
+  const KEY = 'outabout.route.v1';
+  const LEGACY_KEY = 'minitrack.route.v1';
+  const RESTORE_FLAG = 'outabout.localRestore';
+  const planner = window.OutaboutPlanner || window.MiniTrackPlanner;
   const list = document.getElementById('routePointList');
   if (!planner || !list) return;
+
+  try {
+    if (!localStorage.getItem(KEY) && localStorage.getItem(LEGACY_KEY)) {
+      localStorage.setItem(KEY, localStorage.getItem(LEGACY_KEY));
+    }
+  } catch {}
 
   function clearSyntheticHash() {
     if (sessionStorage.getItem(RESTORE_FLAG) !== 'hash') return;
@@ -12,7 +19,7 @@
   }
 
   function modeKey() {
-    return window.MiniTrackActivity?.key || 'wandern';
+    return (window.OutaboutActivity || window.MiniTrackActivity)?.key || 'wandern';
   }
 
   function rowMeta(i) {
@@ -38,7 +45,7 @@
   function saveNow() {
     const count = planner.pointCount?.() || 0;
     if (!count) {
-      try { localStorage.removeItem(KEY); } catch {}
+      try { localStorage.removeItem(KEY); localStorage.removeItem(LEGACY_KEY); } catch {}
       return;
     }
 
@@ -93,7 +100,7 @@
   }
 
   new MutationObserver(scheduleSave).observe(list,{childList:true,subtree:true});
-  document.addEventListener('minitrack:activitychange',scheduleSave);
+  document.addEventListener('outabout:activitychange',scheduleSave);
   window.addEventListener('pagehide',saveNow);
   setTimeout(saveNow, 500);
 })();

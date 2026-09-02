@@ -29,11 +29,11 @@
       row.style.touchAction = 'pan-y';
       const handle = row.children?.[0];
       if (handle instanceof HTMLElement) {
-        handle.style.display = 'none';
-        handle.style.pointerEvents = 'none';
-        handle.style.touchAction = 'pan-y';
+        handle.style.display = '';
+        handle.style.pointerEvents = 'auto';
+        handle.style.touchAction = 'none';
       }
-      row.style.gridTemplateColumns = '34px 1fr 38px';
+      row.style.gridTemplateColumns = '44px 34px 1fr 38px';
     });
   }
 
@@ -53,8 +53,6 @@
     }
 
     if (count === 1) {
-      // Bei genau einem Punkt bleibt das ganze Karten-Kästchen sichtbar,
-      // aber es gibt keine berechnete Route und daher keine Streckenwerte/Aktionen.
       routeInfo.style.display = 'block';
       pointList.style.display = 'block';
       if (routeTitle) routeTitle.textContent = '1 Punkt';

@@ -19,8 +19,11 @@
   function esc(s) {
     return String(s || '').replace(/\\/g,'\\\\').replaceAll(RS,'\\r').replaceAll(FS,'\\f');
   }
+  function plannerApi() { return window.OutaboutPlanner || window.MiniTrackPlanner; }
+  function activityApi() { return window.OutaboutActivity || window.MiniTrackActivity; }
+
   function compactUrl() {
-    const legacy = window.MiniTrackPlanner?.getShareUrl?.();
+    const legacy = plannerApi()?.getShareUrl?.();
     if (!legacy) return null;
     try {
       const u = new URL(legacy);
@@ -53,13 +56,13 @@
       e.preventDefault(); e.stopPropagation();
       const url = compactUrl();
       if (!url) return;
-      const title = `MiniTrack · ${window.MiniTrackActivity?.config?.label || 'Route'}`;
-      const text = 'Route in MiniTrack öffnen';
+      const title = `Outabout · ${activityApi()?.config?.label || 'Route'}`;
+      const text = 'Route in Outabout öffnen';
       if (navigator.share) {
         try { await navigator.share({title,text,url}); return; }
         catch (err) { if (err?.name === 'AbortError') return; }
       }
-      try { await navigator.clipboard.writeText(url); document.getElementById('status').textContent = 'MiniTrack-Link kopiert.'; }
+      try { await navigator.clipboard.writeText(url); document.getElementById('status').textContent = 'Outabout-Link kopiert.'; }
       catch { document.getElementById('status').textContent = 'Teilen auf diesem Gerät nicht möglich.'; }
     });
   }

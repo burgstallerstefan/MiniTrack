@@ -1,7 +1,8 @@
 (() => {
   const mapRef = window.map || (typeof map !== 'undefined' ? map : null);
-  if (!mapRef || !mapRef.getCanvas || window.__miniTrackRoutePointEdit) return;
-  window.__miniTrackRoutePointEdit = true;
+  if (!mapRef || !mapRef.getCanvas || window.__outaboutRoutePointEdit || window.__miniTrackRoutePointEdit) return;
+  window.__outaboutRoutePointEdit = true;
+  window.__miniTrackRoutePointEdit = true; // Legacy-Kompatibilität
 
   const canvas = mapRef.getCanvas();
   const container = mapRef.getContainer();
@@ -9,6 +10,7 @@
   let editIndex = null;
   let hiddenOriginal = null;
   let ignoreClickUntil = 0;
+  const plannerApi = () => window.OutaboutPlanner || window.MiniTrackPlanner;
 
   function status(text) {
     const el = document.getElementById('status');
@@ -111,7 +113,7 @@
   }
 
   function activateEdit(index,coord) {
-    const planner = window.MiniTrackPlanner;
+    const planner = plannerApi();
     if (!planner?.movePoint || !Array.isArray(coord)) return false;
     lockEdit(false);
 
@@ -136,7 +138,7 @@
       const ll=editMarker?.getLngLat();
       if (!ll || editIndex == null) return;
       const currentIndex = editIndex;
-      const ok=window.MiniTrackPlanner?.movePoint?.(currentIndex,[ll.lng,ll.lat]);
+      const ok=plannerApi()?.movePoint?.(currentIndex,[ll.lng,ll.lat]);
       ignoreClickUntil = performance.now() + 450;
       requestAnimationFrame(()=>hideOriginalPoint(currentIndex));
       if (ok) status(`Punkt ${currentIndex+1} verschoben · Route wird neu berechnet. Rot = weiter verschiebbar.`);
@@ -155,7 +157,7 @@
 
   function onDoubleClick(ev) {
     if ((typeof tracking !== 'undefined' && tracking) || (typeof planning !== 'undefined' && planning)) return;
-    const planner=window.MiniTrackPlanner;
+    const planner=plannerApi();
     if (!planner?.insertBetween || !planner?.movePoint || !planner?.getPoint) return;
 
     if (ev.target?.closest?.('.route-edit-marker')) {

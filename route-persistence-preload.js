@@ -1,11 +1,15 @@
 (() => {
-  const KEY = 'minitrack.route.v1';
-  const RESTORE_FLAG = 'minitrack.localRestore';
+  const KEY = 'outabout.route.v1';
+  const LEGACY_KEY = 'minitrack.route.v1';
+  const RESTORE_FLAG = 'outabout.localRestore';
 
   // Ein echter geteilter Link hat immer Vorrang vor dem lokal gespeicherten Stand.
   if (location.hash) return;
 
   try {
+    if (!localStorage.getItem(KEY) && localStorage.getItem(LEGACY_KEY)) {
+      localStorage.setItem(KEY, localStorage.getItem(LEGACY_KEY));
+    }
     const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (!saved || saved.v !== 1) return;
 

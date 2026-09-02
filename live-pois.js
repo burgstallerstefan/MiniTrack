@@ -1,5 +1,5 @@
 (() => {
-  const STORE='minitrack-known-pois-v1';
+  const STORE='minitrack-known-pois-v2';
   const known=new Set();
   const saved=[];
   let timer=null;
@@ -8,7 +8,6 @@
 
   const checked=id=>!!document.getElementById(id)?.checked;
 
-  // Kernfunktionen um die neue Kategorie "localities" erweitern.
   visible = function(cat){
     const id=cat==='alms'?'almsChk':cat==='huts'?'hutsChk':cat==='food'?'foodChk':cat==='localities'?'localitiesChk':'peaksChk';
     return !!document.getElementById(id)?.checked;
@@ -42,42 +41,58 @@
     });
   };
 
+  function value(props,key){
+    return String(props?.[key] ?? '').trim().toLowerCase();
+  }
+
   function catFor(props={},layer=''){
     const name=props.name||props.name_de||props['name:de']||'';
-    const cls=String(props.class||'').toLowerCase();
-    const sub=String(props.subclass||'').toLowerCase();
-    const place=String(props.place||'').toLowerCase();
+    if(!name) return null;
 
-    // Alm/Alpe hat immer Vorrang, egal ob zusätzlich Restaurant/Hütte/locality getaggt.
-    if(/(alm|alpe)/i.test(name)) return ['alms','Alm / Alpe'];
-    if(layer==='mountain_peak' && name) return ['peaks','Gipfel'];
+    const cls=value(props,'class');
+    const sub=value(props,'subclass');
+    const place=value(props,'place');
+    const tourism=value(props,'tourism');
+    const amenity=value(props,'amenity');
+    const natural=value(props,'natural');
+    const landuse=value(props,'landuse');
+    const feature=value(props,'feature');
+    const values=new Set([cls,sub,place,tourism,amenity,natural,landuse,feature].filter(Boolean));
 
-    if(layer==='place' && name && (cls==='locality'||sub==='locality'||place==='locality')){
-      return ['localities','Lokalität'];
+    // Nur explizite Typ-/Tagwerte. Namen werden nie zur Kategorisierung verwendet.
+    if(layer==='mountain_peak' || values.has('peak')) return ['peaks','Gipfel'];
+
+    const almTypes=new Set(['alm','alpe','alp','alpine_pasture','mountain_pasture']);
+    for(const t of almTypes) if(values.has(t)) return ['alms','Alm / Alpe'];
+
+    const hutTypes=new Set(['alpine_hut','wilderness_hut']);
+    for(const t of hutTypes) if(values.has(t)) return ['huts',t==='alpine_hut'?'Alpenhütte':'Schutzhütte'];
+
+    const localityTypes=new Set(['locality','hamlet','isolated_dwelling']);
+    if(layer==='place'){
+      for(const t of localityTypes) if(values.has(t)) return ['localities',t==='locality'?'Lokalität':t==='hamlet'?'Weiler':'Einzellage'];
     }
 
     if(layer==='poi'){
-      if(['alpine_hut','wilderness_hut'].includes(sub)||/hut/.test(sub)) return ['huts','Hütte'];
-
-      const foodSubs=['restaurant','cafe','fast_food','bar','pub','biergarten','food_court'];
-      const lodgingSubs=['hotel','motel','hostel','guest_house','guesthouse','inn','bed_and_breakfast','chalet','apartment','apartments','holiday_apartment','camp_site','caravan_site'];
-      const foodClasses=['restaurant','cafe','bar','food','eatery'];
-      const lodgingClasses=['lodging','accommodation','hotel','hostel','motel'];
-
-      if(foodSubs.includes(sub)||foodClasses.includes(cls)){
-        const t=sub==='cafe'?'Café':sub==='pub'?'Gasthaus / Pub':sub==='biergarten'?'Biergarten':'Gasthaus / Restaurant';
-        return ['food',t];
+      const foodTypes=new Set(['restaurant','cafe','fast_food','bar','pub','biergarten','food_court']);
+      for(const t of foodTypes){
+        if(!values.has(t)) continue;
+        const label=t==='cafe'?'Café':t==='pub'?'Pub':t==='biergarten'?'Biergarten':t==='bar'?'Bar':t==='fast_food'?'Imbiss':'Gasthaus / Restaurant';
+        return ['food',label];
       }
-      if(lodgingSubs.includes(sub)||lodgingClasses.includes(cls)){
-        let t='Unterkunft';
-        if(sub==='hotel') t='Hotel';
-        else if(sub==='hostel') t='Hostel';
-        else if(sub==='motel') t='Motel';
-        else if(['guest_house','guesthouse','inn','bed_and_breakfast'].includes(sub)) t='Pension / Gasthaus';
-        else if(sub==='chalet') t='Chalet';
-        else if(['apartment','apartments','holiday_apartment'].includes(sub)) t='Ferienwohnung';
-        else if(['camp_site','caravan_site'].includes(sub)) t='Camping';
-        return ['food',t];
+
+      const lodgingTypes=new Set(['hotel','motel','hostel','guest_house','guesthouse','inn','bed_and_breakfast','chalet','apartment','apartments','holiday_apartment','camp_site','caravan_site']);
+      for(const t of lodgingTypes){
+        if(!values.has(t)) continue;
+        let label='Unterkunft';
+        if(t==='hotel') label='Hotel';
+        else if(t==='hostel') label='Hostel';
+        else if(t==='motel') label='Motel';
+        else if(['guest_house','guesthouse','inn','bed_and_breakfast'].includes(t)) label='Pension / Gasthaus';
+        else if(t==='chalet') label='Chalet';
+        else if(['apartment','apartments','holiday_apartment'].includes(t)) label='Ferienwohnung';
+        else if(['camp_site','caravan_site'].includes(t)) label='Camping';
+        return ['food',label];
       }
     }
     return null;
@@ -135,7 +150,7 @@
     if(checked('foodChk')) p.push(`${markers.food.length} Gasthäuser & Unterkünfte`);
     if(checked('localitiesChk')) p.push(`${markers.localities.length} Lokalitäten`);
     if(checked('peaksChk')) p.push(`${markers.peaks.length} Gipfel`);
-    document.getElementById('status').textContent=(p.join(' · ')||'Keine Ziele ausgewählt')+' · direkt aus Kartendaten';
+    document.getElementById('status').textContent=(p.join(' · ')||'Keine Ziele ausgewählt')+' · nach OSM/Kartentyp';
   }
 
   function harvest(){

@@ -18,20 +18,6 @@
     get profile(){ return MODES[current].profile; }
   };
 
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = function(input, init) {
-    try {
-      const raw = typeof input === 'string' ? input : input?.url;
-      if (raw && raw.includes('brouter.de/brouter')) {
-        const u = new URL(raw, location.href);
-        u.searchParams.set('profile', MODES[current].profile);
-        if (typeof input === 'string') return nativeFetch(u.toString(), init);
-        return nativeFetch(new Request(u.toString(), input), init);
-      }
-    } catch {}
-    return nativeFetch(input, init);
-  };
-
   const style = document.createElement('style');
   style.textContent = `
     #routeModeToggle{min-height:44px;background:rgba(255,255,255,.97);color:#222;border:1px solid #ccc;border-radius:13px;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:0 14px}

@@ -67,5 +67,5 @@ npx prettier --check index.html styles.css *.js tests/*.cjs
 - Die File System Access API und persistierbare Handles sind browserabhängig; auf nicht unterstützten Browsern ist nach einem Reload eine erneute Ordnerauswahl erforderlich.
 - HEIC/HEIF-Metadaten werden strukturell mit `exifr` gelesen; eine Bilddekodierung oder Konvertierung ist bewusst nicht enthalten.
 - QuickTime/MP4 besitzt viele Herstellerdialekte. Unterstützt sind die typischen ISO-6709-, `keys`-/`ilst`- und `©xyz`-Varianten, nicht jedes proprietäre Format.
-- BRouter, OpenFreeMap, Nominatim, MapLibre und die exakt fixierte `exifr`-Browserbibliothek bleiben externe Laufzeitabhängigkeiten einer statischen Anwendung.
+- BRouter, OpenFreeMap, Nominatim und MapLibre bleiben externe Laufzeitabhängigkeiten einer statischen Anwendung. Die exakt fixierte `exifr`-Bibliothek wird lokal ausgeliefert, damit der Medienimport auch ohne CDN-Zugriff funktioniert.
 - Ein echter Android-Gerätelauf und reale große Mediensammlungen sind für die abschließende Leistungsabnahme weiterhin erforderlich.

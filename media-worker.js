@@ -1,6 +1,8 @@
 "use strict";
 
-const EXIFR_URL = "https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js";
+// Keep the parser in the app bundle. Folder import must also work offline and
+// must not depend on a CDN being reachable from a Web Worker.
+const EXIFR_URL = "vendor/exifr-7.1.3.full.legacy.umd.js";
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "heic", "heif", "png"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v"]);
 const TYPE_SIZES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
@@ -327,7 +329,7 @@ function parseJpeg(bytes) {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8)
     throw new Error("Ungültige JPEG-Signatur");
   let exif = {};
-  for (let offset = 2; offset + 4 <= bytes.length;) {
+  for (let offset = 2; offset + 4 <= bytes.length; ) {
     if (bytes[offset] !== 0xff) {
       offset += 1;
       continue;
@@ -350,7 +352,7 @@ function parsePng(bytes) {
   if (ascii(bytes, 1, 3) !== "PNG") throw new Error("Ungültige PNG-Signatur");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let exif = {};
-  for (let offset = 8; offset + 12 <= bytes.length;) {
+  for (let offset = 8; offset + 12 <= bytes.length; ) {
     const length = view.getUint32(offset, false);
     const type = ascii(bytes, offset + 4, 4);
     const payload = offset + 8;

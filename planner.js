@@ -602,6 +602,7 @@
     route.coords = [];
     route.stats = null;
     route.edgeStatuses = [];
+    route.importedTrack = false;
     clearSources();
     if (openList) collapsed = false;
     renderMarkers();
@@ -1095,6 +1096,7 @@
     route.stats = null;
     route.name = "";
     route.stale = false;
+    route.importedTrack = false;
     clearMarkers();
     clearSources();
     renderList();
@@ -1319,6 +1321,42 @@
       `${name}.gpx`,
     );
     app.setStatus("GPX gespeichert.", "success");
+  }
+
+  function importGpxTrack(coords, { name = "Importierte GPX-Route" } = {}) {
+    const track = (coords || []).filter(util.validCoord).map(util.coord);
+    if (track.length < 2) return false;
+    abortRouting();
+    clearTimeout(rebuildTimer);
+    rebuildTimer = null;
+    route.points = [
+      normalizePoint(track[0], { name: "Start", cat: "gpx" }, 0),
+      normalizePoint(track.at(-1), { name: "Ziel", cat: "gpx" }, 1),
+    ].filter(Boolean);
+    const segment = { status: "routed", coords: track, properties: {} };
+    const analyzed = analyzeSegments([segment]);
+    route.segments = [segment];
+    route.coords = analyzed.coords;
+    route.edgeStatuses = analyzed.edgeStatuses;
+    route.stats = analyzed;
+    route.name = String(name).slice(0, 180) || "Importierte GPX-Route";
+    route.pointSignature = pointSignature();
+    route.stale = false;
+    route.importedTrack = true;
+    drawRoute();
+    renderMarkers();
+    updateStats();
+    drawElevation(analyzed.coords);
+    renderList();
+    renderUI();
+    persist();
+    app.emit("route:calculated", { route });
+    app.setStatus(
+      `GPX importiert: ${track.length.toLocaleString("de-AT")} Trackpunkte.`,
+      "success",
+    );
+    fitRoute();
+    return true;
   }
 
   function restore() {
@@ -1585,6 +1623,7 @@
     calculate: calculateRoute,
     fit: fitRoute,
     clear: clearRoute,
+    importGpxTrack,
     share,
     getShareUrl: shareUrl,
     nearestRouteIndex,
@@ -1617,7 +1656,7 @@
 
   app.on("activity:change", () => {
     persist();
-    if (route.points.length >= 2)
+    if (route.points.length >= 2 && !route.importedTrack)
       scheduleCalculation(40, { preserveVisible: true });
     renderUI();
   });

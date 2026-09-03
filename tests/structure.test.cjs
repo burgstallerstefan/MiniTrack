@@ -99,3 +99,14 @@ test("Geotag-Medien werden als Koordinaten gerendert und nach Import fokussiert"
   assert.match(media, /importedCoords\.push\(\[item\.lng, item\.lat\]\)/);
   assert.match(media, /focusImportedMedia\(importedCoords\)/);
 });
+
+test("GPX-Import ist global verfügbar und übernimmt die Originalstrecke", () => {
+  const planner = fs.readFileSync(path.join(root, "planner.js"), "utf8");
+  const gpx = fs.readFileSync(path.join(root, "gpx.js"), "utf8");
+  assert.match(html, /id="gpxImportBtn"/);
+  assert.match(html, /id="gpxImportInput"/);
+  assert.match(gpx, /\["trk trkseg trkpt", "rte rtept", "wpt"\]/);
+  assert.match(gpx, /app\.planner\?\.importGpxTrack/);
+  assert.match(planner, /function importGpxTrack/);
+  assert.match(planner, /route\.segments = \[segment\]/);
+});

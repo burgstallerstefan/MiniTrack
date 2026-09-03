@@ -159,6 +159,28 @@
     }
   }
 
+  function focusImportedMedia(coords) {
+    const valid = coords.filter(app.util.validCoord);
+    if (!valid.length) return;
+    try {
+      if (valid.length === 1) {
+        map.flyTo({
+          center: valid[0],
+          zoom: Math.max(map.getZoom(), 16),
+          duration: 500,
+        });
+      } else {
+        map.fitBounds(app.util.bounds(valid), {
+          padding: { top: 100, right: 55, bottom: 100, left: 55 },
+          maxZoom: 16,
+          duration: 600,
+        });
+      }
+    } catch (error) {
+      app.log("media:focus-import", error);
+    }
+  }
+
   function installLayers() {
     if (!map.getSource("outabout-media")) {
       map.addSource("outabout-media", {
@@ -748,6 +770,7 @@
     };
     ui.progress.max = Math.max(1, entries.length);
     const clients = [workerClient(), workerClient()];
+    const importedCoords = [];
     let cursor = 0;
     if (directoryHandle && directoryKey) {
       try {
@@ -805,6 +828,7 @@
             };
             memoryFiles.set(id, file);
             mediaItems.set(id, item);
+            importedCoords.push([item.lng, item.lat]);
             await db.putItem(item);
           } else if (result.status === "no-location") stats.noLocation += 1;
           else if (result.status === "unsupported") stats.unsupported += 1;
@@ -827,6 +851,7 @@
     try {
       await Promise.all(clients.map(run));
       renderMarkers();
+      focusImportedMedia(importedCoords);
       showImportSummary(ui, stats);
       refreshAccessNote();
     } finally {

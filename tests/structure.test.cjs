@@ -91,3 +91,11 @@ test("globale Kartenaktionen enthalten Medien und bedingtes Route-Zentrieren", (
   assert.match(html, /id="photosChk"[^>]*checked/);
   assert.match(html, /id="videosChk"[^>]*checked/);
 });
+
+test("Geotag-Medien werden als Koordinaten gerendert und nach Import fokussiert", () => {
+  const media = fs.readFileSync(path.join(root, "media.js"), "utf8");
+  assert.match(media, /coordinates: \[item\.lng, item\.lat\]/);
+  assert.match(media, /function focusImportedMedia/);
+  assert.match(media, /importedCoords\.push\(\[item\.lng, item\.lat\]\)/);
+  assert.match(media, /focusImportedMedia\(importedCoords\)/);
+});

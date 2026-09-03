@@ -21,11 +21,20 @@ const context = {
   Math,
   String,
   Date,
+  console: { warn() {} },
+  exifr: {
+    async gps() {
+      return { latitude: 47.6, longitude: 13.4 };
+    },
+    async parse() {
+      return { DateTimeOriginal: new Date("2024-08-10T12:00:00Z") };
+    },
+  },
   File: class File {},
   self: { addEventListener() {}, postMessage() {} },
 };
 vm.runInNewContext(
-  `${workerSource}\nglobalThis.workerTestApi = { parseIso6709, parseJpeg, parseQuickTimeMetadata };`,
+  `${workerSource}\nglobalThis.workerTestApi = { parseIso6709, parseJpeg, parseXmpMetadata, parseQuickTimeMetadata, parseImageWithExifr };`,
   context,
 );
 
@@ -94,6 +103,10 @@ test("ISO-6709-Positionen werden ohne Dateinamen-Heuristik gelesen", () => {
     context.workerTestApi.parseIso6709("Urlaub_47.5_13.25.jpg"),
     null,
   );
+  assert.deepEqual(
+    { ...context.workerTestApi.parseIso6709("+47.5000+13.2500/") },
+    { lat: 47.5, lng: 13.25 },
+  );
 });
 
 test("JPEG-EXIF-GPS wird aus rationalen Werten gelesen", () => {
@@ -112,4 +125,44 @@ test("QuickTime-Location wird nur in der Nähe eines Location-Tags erkannt", () 
     context.workerTestApi.parseQuickTimeMetadata(plain).lat,
     undefined,
   );
+});
+
+test("XMP-GPS mit Grad und Dezimalminuten wird erkannt", () => {
+  const bytes = new TextEncoder().encode(`
+    <rdf:Description
+      exif:GPSLatitude="47,30.000N"
+      exif:GPSLongitude="13,15.000E"
+      exif:DateTimeOriginal="2024:08:10 12:00:00" />
+  `);
+  const result = context.workerTestApi.parseXmpMetadata(bytes);
+  assert.equal(result.lat, 47.5);
+  assert.equal(result.lng, 13.25);
+  assert.equal(result.takenAt, "2024-08-10T12:00:00");
+});
+
+test("exifr-Ergebnis wird auf das interne Geotag-Format abgebildet", async () => {
+  const result = await context.workerTestApi.parseImageWithExifr({});
+  assert.equal(result.lat, 47.6);
+  assert.equal(result.lng, 13.4);
+  assert.equal(result.takenAt, "2024-08-10T12:00:00.000Z");
+});
+
+test("3GPP-loci-Box in MP4 wird als Geotag erkannt", () => {
+  const name = new TextEncoder().encode("Aufnahme\0");
+  const bytes = new Uint8Array(8 + 4 + 2 + name.length + 1 + 12);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, bytes.length, false);
+  bytes.set(new TextEncoder().encode("loci"), 4);
+  let offset = 8 + 4 + 2;
+  bytes.set(name, offset);
+  offset += name.length;
+  bytes[offset] = 0;
+  offset += 1;
+  view.setInt32(offset, Math.round(13.25 * 65536), false);
+  view.setInt32(offset + 4, Math.round(47.5 * 65536), false);
+  view.setInt32(offset + 8, Math.round(450 * 65536), false);
+
+  const result = context.workerTestApi.parseQuickTimeMetadata(bytes);
+  assert.equal(result.lat, 47.5);
+  assert.equal(result.lng, 13.25);
 });

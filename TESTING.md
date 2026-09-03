@@ -5,7 +5,7 @@ Stand: 3. September 2026
 ## Automatisch geprüft
 
 - Syntaxprüfung aller sieben aktiven JavaScript-Module und des Media-Workers
-- neun Node-Tests für Script-Inventar, Architekturregeln, sechs Aktivitäten, Share-Kompatibilität, Persistenzmigration sowie JPEG-/QuickTime-GPS-Metadaten
+- siebzehn Node-Tests für Script-Inventar, Architekturregeln, sechs Aktivitäten, Share-Kompatibilität, Persistenzmigration sowie EXIF-, XMP-, HEIC- und QuickTime-/MP4-GPS-Metadaten
 - HTML-Validierung und Prettier-Formatprüfung
 - alle lokalen Seitenressourcen über einen statischen HTTP-Server mit HTTP 200 erreichbar
 - MapLibre 5.21.1, OpenFreeMap und BRouter erreichbar
@@ -65,7 +65,7 @@ npx prettier --check index.html styles.css *.js tests/*.cjs
 ## Verbleibende technische Schulden
 
 - Die File System Access API und persistierbare Handles sind browserabhängig; auf nicht unterstützten Browsern ist nach einem Reload eine erneute Ordnerauswahl erforderlich.
-- HEIC/HEIF-Metadaten werden nur verarbeitet, wenn ein kompatibler EXIF-Block direkt lesbar ist; eine Bilddekodierung oder Konvertierung ist bewusst nicht enthalten.
+- HEIC/HEIF-Metadaten werden strukturell mit `exifr` gelesen; eine Bilddekodierung oder Konvertierung ist bewusst nicht enthalten.
 - QuickTime/MP4 besitzt viele Herstellerdialekte. Unterstützt sind die typischen ISO-6709-, `keys`-/`ilst`- und `©xyz`-Varianten, nicht jedes proprietäre Format.
-- BRouter, OpenFreeMap, Nominatim und CDN-Ressourcen bleiben externe Laufzeitabhängigkeiten einer statischen Anwendung.
+- BRouter, OpenFreeMap, Nominatim, MapLibre und die exakt fixierte `exifr`-Browserbibliothek bleiben externe Laufzeitabhängigkeiten einer statischen Anwendung.
 - Ein echter Android-Gerätelauf und reale große Mediensammlungen sind für die abschließende Leistungsabnahme weiterhin erforderlich.

@@ -1,8 +1,20 @@
 "use strict";
 
+const EXIFR_URL = "https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js";
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "heic", "heif", "png"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v"]);
 const TYPE_SIZES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
+
+if (typeof importScripts === "function") {
+  try {
+    importScripts(EXIFR_URL);
+  } catch (error) {
+    console.warn(
+      "exifr konnte nicht geladen werden; interner Fallback aktiv.",
+      error,
+    );
+  }
+}
 
 function extension(name) {
   return String(name || "")
@@ -26,6 +38,8 @@ function utf8(bytes, start = 0, length = bytes.length - start) {
 }
 
 function normalizeDate(value) {
+  if (value instanceof Date && Number.isFinite(value.getTime()))
+    return value.toISOString();
   const text = String(value || "")
     .trim()
     .replace(/\0+$/, "");
@@ -42,11 +56,11 @@ function normalizeDate(value) {
 
 function parseIso6709(value) {
   const match = String(value || "").match(
-    /([+-])(\d{2}(?:\.\d+)?)([+-])(\d{3}(?:\.\d+)?)(?:[+-]\d+(?:\.\d+)?)?\/?/,
+    /([+-])\s*(\d{1,2}(?:[.,]\d+)?)\s*([+-])\s*(\d{1,3}(?:[.,]\d+)?)(?:\s*[+-]\d+(?:[.,]\d+)?)?\/?/,
   );
   if (!match) return null;
-  const lat = Number(match[2]) * (match[1] === "-" ? -1 : 1);
-  const lng = Number(match[4]) * (match[3] === "-" ? -1 : 1);
+  const lat = Number(match[2].replace(",", ".")) * (match[1] === "-" ? -1 : 1);
+  const lng = Number(match[4].replace(",", ".")) * (match[3] === "-" ? -1 : 1);
   if (
     !Number.isFinite(lat) ||
     !Number.isFinite(lng) ||
@@ -55,6 +69,139 @@ function parseIso6709(value) {
   )
     return null;
   return { lat, lng };
+}
+
+function decimalCoordinate(value, ref, limit) {
+  if (value == null) return null;
+  let result = null;
+  if (Array.isArray(value) && value.length) {
+    const degrees = Number(value[0]);
+    result =
+      Math.sign(degrees || 1) *
+      (Math.abs(degrees) +
+        Number(value[1] || 0) / 60 +
+        Number(value[2] || 0) / 3600);
+  } else if (typeof value === "number") result = value;
+  else {
+    const text = String(value).trim();
+    const degreeMinute = text.match(
+      /^([+-]?\d{1,3})\s*,\s*(\d{1,2}(?:\.\d+)?)\s*([NSEW])$/i,
+    );
+    if (degreeMinute) {
+      const degrees = Number(degreeMinute[1]);
+      result =
+        Math.sign(degrees || 1) *
+        (Math.abs(degrees) + Number(degreeMinute[2]) / 60);
+    } else {
+      const numbers = text.match(/[+-]?\d+(?:[.,]\d+)?/g) || [];
+      if (numbers.length >= 2) {
+        const degrees = Number(numbers[0].replace(",", "."));
+        result =
+          Math.sign(degrees || 1) *
+          (Math.abs(degrees) +
+            Number(numbers[1].replace(",", ".")) / 60 +
+            Number((numbers[2] || "0").replace(",", ".")) / 3600);
+      } else if (numbers.length === 1)
+        result = Number(numbers[0].replace(",", "."));
+    }
+    ref ||= text.match(/[NSEW]/i)?.[0];
+  }
+  if (!Number.isFinite(result)) return null;
+  if (/^[SW]$/i.test(String(ref || ""))) result = -Math.abs(result);
+  if (/^[NE]$/i.test(String(ref || ""))) result = Math.abs(result);
+  return Math.abs(result) <= limit ? result : null;
+}
+
+function valueFor(metadata, names) {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const wanted = new Set(
+    names.map((name) =>
+      String(name)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ""),
+    ),
+  );
+  for (const [key, value] of Object.entries(metadata)) {
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (wanted.has(normalized)) return value;
+  }
+  return undefined;
+}
+
+function locationFromMetadata(metadata) {
+  const lat = decimalCoordinate(
+    valueFor(metadata, ["latitude", "GPSLatitude", "exif:GPSLatitude"]),
+    valueFor(metadata, [
+      "latitudeRef",
+      "GPSLatitudeRef",
+      "exif:GPSLatitudeRef",
+    ]),
+    90,
+  );
+  const lng = decimalCoordinate(
+    valueFor(metadata, ["longitude", "GPSLongitude", "exif:GPSLongitude"]),
+    valueFor(metadata, [
+      "longitudeRef",
+      "GPSLongitudeRef",
+      "exif:GPSLongitudeRef",
+    ]),
+    180,
+  );
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function parseXmpMetadata(bytes) {
+  const text = utf8(bytes, 0, Math.min(bytes.length, 2 * 1024 * 1024));
+  const read = (name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return (
+      text.match(
+        new RegExp(`(?:[\\w-]+:)?${escaped}\\s*=\\s*["']([^"']+)["']`, "i"),
+      )?.[1] ||
+      text.match(
+        new RegExp(
+          `<(?:[\\w-]+:)?${escaped}[^>]*>([^<]+)</(?:[\\w-]+:)?${escaped}>`,
+          "i",
+        ),
+      )?.[1]
+    );
+  };
+  const metadata = {
+    GPSLatitude: read("GPSLatitude"),
+    GPSLongitude: read("GPSLongitude"),
+    GPSLatitudeRef: read("GPSLatitudeRef"),
+    GPSLongitudeRef: read("GPSLongitudeRef"),
+  };
+  const location = locationFromMetadata(metadata);
+  const takenAt = normalizeDate(read("DateTimeOriginal") || read("CreateDate"));
+  return { ...(location || {}), takenAt };
+}
+
+async function parseImageWithExifr(file) {
+  const api = globalThis.exifr;
+  if (!api?.gps && !api?.parse) return {};
+  const [gps, metadata] = await Promise.all([
+    api?.gps
+      ? Promise.resolve()
+          .then(() => api.gps(file))
+          .catch(() => null)
+      : null,
+    api?.parse
+      ? Promise.resolve()
+          .then(() => api.parse(file, { tiff: true, xmp: true }))
+          .catch(() => null)
+      : null,
+  ]);
+  const location = locationFromMetadata(gps) || locationFromMetadata(metadata);
+  const takenAt = normalizeDate(
+    valueFor(metadata, [
+      "DateTimeOriginal",
+      "CreateDate",
+      "DateTimeDigitized",
+      "ModifyDate",
+    ]),
+  );
+  return { ...(location || {}), takenAt };
 }
 
 function parseTiff(bytes, base = 0) {
@@ -165,9 +312,21 @@ function parseTiff(bytes, base = 0) {
   return { ...(location || {}), takenAt };
 }
 
+function combineMetadata(primary, secondary) {
+  return {
+    ...(Number.isFinite(primary?.lat) && Number.isFinite(primary?.lng)
+      ? { lat: primary.lat, lng: primary.lng }
+      : Number.isFinite(secondary?.lat) && Number.isFinite(secondary?.lng)
+        ? { lat: secondary.lat, lng: secondary.lng }
+        : {}),
+    takenAt: primary?.takenAt || secondary?.takenAt || null,
+  };
+}
+
 function parseJpeg(bytes) {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8)
     throw new Error("Ungültige JPEG-Signatur");
+  let exif = {};
   for (let offset = 2; offset + 4 <= bytes.length;) {
     if (bytes[offset] !== 0xff) {
       offset += 1;
@@ -180,29 +339,31 @@ function parseJpeg(bytes) {
     const payload = offset + 4;
     if (marker === 0xe1 && ascii(bytes, payload, 6) === "Exif\0\0") {
       const result = parseTiff(bytes, payload + 6);
-      if (result) return result;
+      if (result) exif = combineMetadata(exif, result);
     }
     offset += length + 2;
   }
-  return {};
+  return combineMetadata(exif, parseXmpMetadata(bytes));
 }
 
 function parsePng(bytes) {
   if (ascii(bytes, 1, 3) !== "PNG") throw new Error("Ungültige PNG-Signatur");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let exif = {};
   for (let offset = 8; offset + 12 <= bytes.length;) {
     const length = view.getUint32(offset, false);
     const type = ascii(bytes, offset + 4, 4);
     const payload = offset + 8;
     if (payload + length + 4 > bytes.length) break;
-    if (type === "eXIf") return parseTiff(bytes, payload) || {};
+    if (type === "eXIf") exif = parseTiff(bytes, payload) || {};
     if (type === "IEND") break;
     offset = payload + length + 4;
   }
-  return {};
+  return combineMetadata(exif, parseXmpMetadata(bytes));
 }
 
 function parseHeif(bytes) {
+  let exif = {};
   for (let index = 0; index + 14 < bytes.length; index += 1) {
     if (ascii(bytes, index, 6) !== "Exif\0\0") continue;
     const end = Math.min(bytes.length - 4, index + 80);
@@ -210,11 +371,11 @@ function parseHeif(bytes) {
       const order = ascii(bytes, offset, 4);
       if (order === "II*\0" || order === "MM\0*") {
         const result = parseTiff(bytes, offset);
-        if (result) return result;
+        if (result) exif = combineMetadata(exif, result);
       }
     }
   }
-  return {};
+  return combineMetadata(exif, parseXmpMetadata(bytes));
 }
 
 function boxList(bytes, start, end) {
@@ -276,10 +437,30 @@ function parseKeys(bytes, box) {
   return keys;
 }
 
+function parseLoci(bytes, box) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = box.content + 6;
+  while (offset < box.end && bytes[offset] !== 0) offset += 1;
+  offset += 1;
+  if (offset + 13 > box.end) return null;
+  offset += 1;
+  const lng = view.getInt32(offset, false) / 65536;
+  const lat = view.getInt32(offset + 4, false) / 65536;
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    Math.abs(lat) > 90 ||
+    Math.abs(lng) > 180
+  )
+    return null;
+  return { lat, lng };
+}
+
 function parseQuickTimeMetadata(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let keys = [];
   const values = new Map();
+  let structuralLocation = null;
   const containers = new Set([
     "moov",
     "trak",
@@ -305,6 +486,8 @@ function parseQuickTimeMetadata(bytes) {
         }
       } else if (box.type === "©xyz" || box.type === "©day") {
         values.set(box.type, dataValue(bytes, box));
+      } else if (box.type === "loci") {
+        structuralLocation ||= parseLoci(bytes, box);
       }
       if (containers.has(box.type)) walk(box.content, box.end, depth + 1);
       else if (box.type === "meta")
@@ -313,7 +496,7 @@ function parseQuickTimeMetadata(bytes) {
   }
   walk(0, bytes.length);
 
-  let location = null;
+  let location = structuralLocation;
   let takenAt = null;
   for (const [key, value] of values) {
     if (/location.*iso6709|©xyz/i.test(key)) location ||= parseIso6709(value);
@@ -332,6 +515,11 @@ function parseQuickTimeMetadata(bytes) {
         offset = text.indexOf(needle, offset + needle.length);
       }
     }
+  }
+  if (!location) {
+    const xmp = parseXmpMetadata(bytes);
+    if (Number.isFinite(xmp.lat) && Number.isFinite(xmp.lng)) location = xmp;
+    takenAt ||= xmp.takenAt;
   }
   return { ...(location || {}), takenAt };
 }
@@ -390,14 +578,24 @@ async function inspect(file) {
       throw new Error("Kein lesbarer QuickTime/MP4-Metadatenblock gefunden");
     metadata = parseQuickTimeMetadata(moov);
   } else {
-    const max =
-      ext === "heic" || ext === "heif" ? 32 * 1024 * 1024 : 16 * 1024 * 1024;
-    const bytes = new Uint8Array(
-      await file.slice(0, Math.min(file.size, max)).arrayBuffer(),
-    );
-    if (ext === "jpg" || ext === "jpeg") metadata = parseJpeg(bytes);
-    else if (ext === "png") metadata = parsePng(bytes);
-    else metadata = parseHeif(bytes);
+    const libraryMetadata = await parseImageWithExifr(file);
+    if (
+      Number.isFinite(libraryMetadata.lat) &&
+      Number.isFinite(libraryMetadata.lng)
+    )
+      metadata = libraryMetadata;
+    else {
+      const max =
+        ext === "heic" || ext === "heif" ? 32 * 1024 * 1024 : 16 * 1024 * 1024;
+      const bytes = new Uint8Array(
+        await file.slice(0, Math.min(file.size, max)).arrayBuffer(),
+      );
+      let fallback = {};
+      if (ext === "jpg" || ext === "jpeg") fallback = parseJpeg(bytes);
+      else if (ext === "png") fallback = parsePng(bytes);
+      else fallback = parseHeif(bytes);
+      metadata = combineMetadata(libraryMetadata, fallback);
+    }
   }
 
   const hasLocation =

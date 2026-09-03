@@ -1,0 +1,115 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+
+const workerSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "media-worker.js"),
+  "utf8",
+);
+const context = {
+  TextDecoder,
+  TextEncoder,
+  DataView,
+  Uint8Array,
+  Set,
+  Map,
+  RangeError,
+  Error,
+  Number,
+  Math,
+  String,
+  Date,
+  File: class File {},
+  self: { addEventListener() {}, postMessage() {} },
+};
+vm.runInNewContext(
+  `${workerSource}\nglobalThis.workerTestApi = { parseIso6709, parseJpeg, parseQuickTimeMetadata };`,
+  context,
+);
+
+function syntheticExifJpeg() {
+  const tiff = new Uint8Array(140);
+  const view = new DataView(tiff.buffer);
+  tiff.set([0x49, 0x49]);
+  view.setUint16(2, 42, true);
+  view.setUint32(4, 8, true);
+  view.setUint16(8, 1, true);
+  view.setUint16(10, 0x8825, true);
+  view.setUint16(12, 4, true);
+  view.setUint32(14, 1, true);
+  view.setUint32(18, 26, true);
+  view.setUint32(22, 0, true);
+  const gps = 26;
+  view.setUint16(gps, 4, true);
+  const entry = (index, tag, type, count, value) => {
+    const at = gps + 2 + index * 12;
+    view.setUint16(at, tag, true);
+    view.setUint16(at + 2, type, true);
+    view.setUint32(at + 4, count, true);
+    if (typeof value === "number") view.setUint32(at + 8, value, true);
+    else tiff.set(value, at + 8);
+  };
+  entry(0, 1, 2, 2, Uint8Array.from([78, 0]));
+  entry(1, 2, 5, 3, 80);
+  entry(2, 3, 2, 2, Uint8Array.from([69, 0]));
+  entry(3, 4, 5, 3, 104);
+  view.setUint32(gps + 50, 0, true);
+  const rational = (offset, values) =>
+    values.forEach(([numerator, denominator], index) => {
+      view.setUint32(offset + index * 8, numerator, true);
+      view.setUint32(offset + index * 8 + 4, denominator, true);
+    });
+  rational(80, [
+    [47, 1],
+    [30, 1],
+    [0, 1],
+  ]);
+  rational(104, [
+    [13, 1],
+    [15, 1],
+    [0, 1],
+  ]);
+
+  const payload = new Uint8Array(6 + tiff.length);
+  payload.set(Uint8Array.from([69, 120, 105, 102, 0, 0]));
+  payload.set(tiff, 6);
+  const jpeg = new Uint8Array(2 + 2 + 2 + payload.length + 2);
+  jpeg.set([0xff, 0xd8, 0xff, 0xe1]);
+  const length = payload.length + 2;
+  jpeg[4] = length >> 8;
+  jpeg[5] = length & 0xff;
+  jpeg.set(payload, 6);
+  jpeg.set([0xff, 0xd9], jpeg.length - 2);
+  return jpeg;
+}
+
+test("ISO-6709-Positionen werden ohne Dateinamen-Heuristik gelesen", () => {
+  assert.deepEqual(
+    { ...context.workerTestApi.parseIso6709("+47.5000+013.2500+450.0/") },
+    { lat: 47.5, lng: 13.25 },
+  );
+  assert.equal(
+    context.workerTestApi.parseIso6709("Urlaub_47.5_13.25.jpg"),
+    null,
+  );
+});
+
+test("JPEG-EXIF-GPS wird aus rationalen Werten gelesen", () => {
+  const result = context.workerTestApi.parseJpeg(syntheticExifJpeg());
+  assert.equal(result.lat, 47.5);
+  assert.equal(result.lng, 13.25);
+});
+
+test("QuickTime-Location wird nur in der Nähe eines Location-Tags erkannt", () => {
+  const tagged = new TextEncoder().encode(
+    "xxxxcom.apple.quicktime.location.ISO6709xxxx+47.5000+013.2500+450.0/xxxx",
+  );
+  const plain = new TextEncoder().encode("xxxx+47.5000+013.2500+450.0/xxxx");
+  assert.equal(context.workerTestApi.parseQuickTimeMetadata(tagged).lat, 47.5);
+  assert.equal(
+    context.workerTestApi.parseQuickTimeMetadata(plain).lat,
+    undefined,
+  );
+});

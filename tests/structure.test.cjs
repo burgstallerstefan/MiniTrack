@@ -1,0 +1,66 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+
+const root = path.resolve(__dirname, "..");
+const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(
+  (match) => match[1].split("?")[0],
+);
+const localScripts = scripts.filter((source) => !/^https?:/.test(source));
+
+test("jede lokale Script-Referenz existiert und wird nur einmal geladen", () => {
+  assert.equal(new Set(localScripts).size, localScripts.length);
+  localScripts.forEach((source) =>
+    assert.ok(fs.existsSync(path.join(root, source)), `${source} fehlt`),
+  );
+});
+
+test("die neue Architektur enthält keine Patch-Overrides oder MutationObserver", () => {
+  const source = localScripts
+    .map((file) => fs.readFileSync(path.join(root, file), "utf8"))
+    .join("\n");
+  assert.doesNotMatch(source, /window\.(?:fetch|maplibregl)\s*=/);
+  assert.doesNotMatch(source, /geolocation\.watchPosition\s*=/);
+  assert.doesNotMatch(source, /MutationObserver/);
+  assert.doesNotMatch(source, /profile=trekking/);
+  assert.doesNotMatch(source, /MiniTrack/);
+});
+
+test("alle sechs Aktivitätsmodi sind definiert", () => {
+  const source = fs.readFileSync(path.join(root, "activity.js"), "utf8");
+  for (const mode of [
+    "wandern",
+    "alpin",
+    "rennrad",
+    "gravel",
+    "mtb",
+    "spazieren",
+  ]) {
+    assert.match(source, new RegExp(`\\b${mode}:`));
+  }
+});
+
+test("Medien bleiben aus localStorage und Share-Daten heraus", () => {
+  const media = fs.readFileSync(path.join(root, "media.js"), "utf8");
+  const planner = fs.readFileSync(path.join(root, "planner.js"), "utf8");
+  assert.doesNotMatch(media, /localStorage/);
+  assert.doesNotMatch(planner, /objectURL|blob:|mediaItems|indexedDB/i);
+});
+
+test("Share-Felder werden verlustfrei codiert und alte Links bleiben lesbar", () => {
+  const planner = fs.readFileSync(path.join(root, "planner.js"), "utf8");
+  assert.match(planner, /encodeURIComponent\(String\(value \|\| ""\)\)/);
+  assert.match(planner, /function unescapeLegacyField/);
+  assert.match(planner, /\["2", "3"\]\.includes\(header\[0\]\)/);
+  assert.match(planner, /decodeLegacyHash/);
+});
+
+test("lokale Routendaten der Version 1 werden in Version 2 migriert", () => {
+  const planner = fs.readFileSync(path.join(root, "planner.js"), "utf8");
+  assert.match(planner, /outabout\.route\.v1/);
+  assert.match(planner, /minitrack\.route\.v1/);
+  assert.match(planner, /legacy\.kind === "routeHash"/);
+  assert.match(planner, /legacy\.kind === "single"/);
+});

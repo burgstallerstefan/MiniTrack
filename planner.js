@@ -640,6 +640,41 @@
     return true;
   }
 
+  async function ensureLocationStart() {
+    if (route.points.length) return true;
+    let coord = app.state.gps.coord;
+    if (!util.validCoord(coord)) {
+      try {
+        coord = await app.navigation?.requestLocation?.({
+          pan: true,
+          silent: false,
+        });
+      } catch (error) {
+        app.log("planner:location-start", error);
+        return false;
+      }
+    }
+    if (route.points.length) return true;
+    const point = normalizePoint(
+      coord,
+      {
+        name: "Aktueller Standort",
+        type: "",
+        cat: "gps",
+      },
+      0,
+    );
+    if (!point) return false;
+    route.points.push(point);
+    pointsChanged({ recalculate: false });
+    return true;
+  }
+
+  async function addPoi(coord, meta = {}) {
+    if (!route.points.length && !(await ensureLocationStart())) return false;
+    return addPoint(coord, meta);
+  }
+
   function insertBetween(segmentIndex, coord) {
     if (segmentIndex < 0 || segmentIndex >= route.points.length - 1)
       return false;
@@ -719,15 +754,18 @@
     }
 
     const add = document.createElement("button");
+    add.type = "button";
     add.className = "popbtn good";
-    add.textContent = "＋ Ans Ende anhängen";
-    add.addEventListener("click", () => {
-      addPoint(point.coord, {
+    add.textContent = "＋ Hinzufügen";
+    add.addEventListener("click", async () => {
+      add.disabled = true;
+      const added = await addPoi(point.coord, {
         name: point.name,
         type: point.type,
         cat: point.cat,
       });
-      popup.remove();
+      if (added) popup.remove();
+      else add.disabled = false;
     });
     body.appendChild(add);
 
@@ -748,7 +786,7 @@
 
     const remove = document.createElement("button");
     remove.className = "popbtn warn";
-    remove.textContent = "Punkt löschen";
+    remove.textContent = "Löschen";
     remove.addEventListener("click", () => {
       popup.remove();
       removePoint(index);
@@ -1305,9 +1343,11 @@
     );
   }
 
-  function armMapPoint() {
+  async function armMapPoint() {
+    if (!route.points.length && !(await ensureLocationStart())) return false;
     pendingMapPoint = true;
     app.setStatus("Position für den neuen Routenpunkt auf der Karte antippen.");
+    return true;
   }
 
   function setupLineDrag() {
@@ -1474,10 +1514,16 @@
     pointCount: () => route.points.length,
     hasStart: () => route.points.length > 0,
     addPoint,
-    addPoi: addPoint,
+    addPoi,
     setStartPoi(coord, meta) {
       if (route.points.length) return false;
-      return addPoint(coord, meta);
+      const added = addPoint(coord, meta);
+      if (added)
+        app.setStatus(
+          `${meta?.name || "Punkt"} als Punkt 1 gesetzt.`,
+          "success",
+        );
+      return added;
     },
     insertBetween,
     movePoint,

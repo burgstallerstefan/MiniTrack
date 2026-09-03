@@ -64,3 +64,17 @@ test("lokale Routendaten der Version 1 werden in Version 2 migriert", () => {
   assert.match(planner, /legacy\.kind === "routeHash"/);
   assert.match(planner, /legacy\.kind === "single"/);
 });
+
+test("Start, Hinzufügen und Standortstart folgen dem bisherigen Bedienablauf", () => {
+  const planner = fs.readFileSync(path.join(root, "planner.js"), "utf8");
+  const pois = fs.readFileSync(path.join(root, "pois.js"), "utf8");
+  const navigation = fs.readFileSync(path.join(root, "navigation.js"), "utf8");
+
+  assert.match(pois, /start\.textContent = "Start"/);
+  assert.match(pois, /add\.textContent = "＋ Hinzufügen"/);
+  assert.doesNotMatch(pois, /Als Punkt 1 setzen/);
+  assert.match(planner, /async function ensureLocationStart/);
+  assert.match(planner, /name: "Aktueller Standort"/);
+  assert.match(planner, /remove\.textContent = "Löschen"/);
+  assert.match(navigation, /requestLocation\(\{ pan: true, silent: false \}\)/);
+});

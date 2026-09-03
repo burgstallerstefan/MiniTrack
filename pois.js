@@ -225,19 +225,35 @@
     body.append(title, subtitle);
 
     const planner = app.planner;
+    if (!planner?.hasStart()) {
+      const start = document.createElement("button");
+      start.type = "button";
+      start.className = "popbtn secondary";
+      start.textContent = "Start";
+      start.addEventListener("click", () => {
+        const added = planner?.setStartPoi(point.coord, {
+          name: point.name,
+          type: point.type,
+          cat: point.cat || "map",
+        });
+        if (added) popup.remove();
+      });
+      body.appendChild(start);
+    }
+
     const add = document.createElement("button");
     add.type = "button";
     add.className = "popbtn good";
-    add.textContent = planner?.hasStart()
-      ? "＋ Zur Route hinzufügen"
-      : "Als Punkt 1 setzen";
-    add.addEventListener("click", () => {
-      planner?.addPoi(point.coord, {
+    add.textContent = "＋ Hinzufügen";
+    add.addEventListener("click", async () => {
+      add.disabled = true;
+      const added = await planner?.addPoi(point.coord, {
         name: point.name,
         type: point.type,
         cat: point.cat || "map",
       });
-      popup.remove();
+      if (added) popup.remove();
+      else add.disabled = false;
     });
     body.appendChild(add);
 

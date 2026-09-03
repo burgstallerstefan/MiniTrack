@@ -416,6 +416,6 @@
 
   app.whenMapReady(() => {
     installTrackLayer();
-    requestLocation({ pan: false, silent: true }).catch(() => {});
+    requestLocation({ pan: true, silent: false }).catch(() => {});
   });
 })();

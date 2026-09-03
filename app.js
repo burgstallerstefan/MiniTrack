@@ -24,7 +24,7 @@
   };
 
   const app = {
-    version: "2026.09.03.3",
+    version: "2026.09.03.4",
     state,
     events,
     config: {

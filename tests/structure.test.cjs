@@ -78,3 +78,16 @@ test("Start, Hinzufügen und Standortstart folgen dem bisherigen Bedienablauf", 
   assert.match(planner, /remove\.textContent = "Löschen"/);
   assert.match(navigation, /requestLocation\(\{ pan: true, silent: false \}\)/);
 });
+
+test("globale Kartenaktionen enthalten Medien und bedingtes Route-Zentrieren", () => {
+  assert.doesNotMatch(html, /id="(?:addRoutePoint|mapAddPointBtn)"/);
+  assert.equal((html.match(/id="mediaFolderBtn"/g) || []).length, 1);
+  assert.match(
+    html,
+    /id="top"[\s\S]*id="routeCenterBtn"[\s\S]*id="mediaFolderBtn"/,
+  );
+  assert.match(html, /id="routeCenterBtn"[\s\S]*hidden/);
+  assert.match(html, /id="shareRoute"[\s\S]*<svg/);
+  assert.match(html, /id="photosChk"[^>]*checked/);
+  assert.match(html, /id="videosChk"[^>]*checked/);
+});

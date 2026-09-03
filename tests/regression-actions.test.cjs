@@ -78,6 +78,8 @@ test("Hinzufügen erzeugt bei leerer Route Standort als Punkt 1", async () => {
     on() {},
     easeTo() {},
     getZoom: () => 10,
+    getCanvas: () => ({ clientWidth: 100, clientHeight: 100 }),
+    project: ([x, y]) => ({ x, y }),
   };
   const app = {
     map,
@@ -165,6 +167,28 @@ test("Hinzufügen erzeugt bei leerer Route Standort als Punkt 1", async () => {
   assert.deepEqual(state.route.points[0].coord, [13.04, 47.8]);
   assert.equal(state.route.points[1].name, "Testhütte");
   assert.deepEqual(state.route.points[1].coord, [13.1, 47.9]);
+
+  state.route.coords = [
+    [-10, 50],
+    [110, 50],
+  ];
+  app.planner.render();
+  assert.equal(
+    elements.get("routeCenterBtn").hidden,
+    true,
+    "eine durch das Blickfeld verlaufende Route benötigt keinen Zentrierbutton",
+  );
+
+  state.route.coords = [
+    [150, 150],
+    [170, 170],
+  ];
+  app.planner.render();
+  assert.equal(
+    elements.get("routeCenterBtn").hidden,
+    false,
+    "außerhalb des Blickfelds muss der Zentrierbutton erscheinen",
+  );
 });
 
 test("App-Start ermittelt den Standort und bewegt die Karte dorthin", () => {

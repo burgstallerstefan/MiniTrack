@@ -13,7 +13,7 @@
     actions: app.el("routeActions"),
     start: app.el("startRoute"),
     clear: app.el("clearRoute"),
-    add: app.el("addRoutePoint"),
+    center: app.el("routeCenterBtn"),
     share: app.el("shareRoute"),
     export: app.el("exportRouteGpx"),
     toggle: app.el("routeListToggle"),
@@ -59,7 +59,6 @@
   let markers = [];
   let collapsed = false;
   let sharedRoute = false;
-  let pendingMapPoint = false;
   let calculationId = 0;
   let activeController = null;
   let rebuildTimer = null;
@@ -635,7 +634,6 @@
     const point = normalizePoint(coord, meta);
     if (!point) return false;
     route.points.push(point);
-    pendingMapPoint = false;
     pointsChanged();
     return true;
   }
@@ -933,6 +931,7 @@
     const count = route.points.length;
     if (!ui.card) return;
     ui.card.hidden = count === 0;
+    syncRouteCenterButton();
     if (!count) return;
     const displayedActivity =
       route.stats && route.name
@@ -1002,12 +1001,80 @@
     ui.elevation.hidden = collapsed;
   }
 
+  function pointInViewport(point, width, height) {
+    return (
+      point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height
+    );
+  }
+
+  function segmentIntersectsViewport(from, to, width, height) {
+    if (
+      pointInViewport(from, width, height) ||
+      pointInViewport(to, width, height)
+    )
+      return true;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    let near = 0;
+    let far = 1;
+    const clip = (direction, distance) => {
+      if (direction === 0) return distance >= 0;
+      const ratio = distance / direction;
+      if (direction < 0) {
+        if (ratio > far) return false;
+        if (ratio > near) near = ratio;
+      } else {
+        if (ratio < near) return false;
+        if (ratio < far) far = ratio;
+      }
+      return true;
+    };
+    return (
+      clip(-dx, from.x) &&
+      clip(dx, width - from.x) &&
+      clip(-dy, from.y) &&
+      clip(dy, height - from.y)
+    );
+  }
+
+  function routeVisibleInViewport() {
+    if (route.coords.length < 2) return true;
+    try {
+      const canvas = map.getCanvas();
+      const width = canvas.clientWidth || canvas.width;
+      const height = canvas.clientHeight || canvas.height;
+      if (!width || !height) return true;
+      let previous = map.project([route.coords[0][0], route.coords[0][1]]);
+      if (pointInViewport(previous, width, height)) return true;
+      for (let index = 1; index < route.coords.length; index += 1) {
+        const coord = route.coords[index];
+        const current = map.project([coord[0], coord[1]]);
+        if (segmentIntersectsViewport(previous, current, width, height))
+          return true;
+        previous = current;
+      }
+      return false;
+    } catch (error) {
+      app.log("planner:route-visibility", error);
+      return true;
+    }
+  }
+
+  function syncRouteCenterButton() {
+    if (!ui.center) return;
+    ui.center.hidden =
+      app.state.tracking.active ||
+      route.coords.length < 2 ||
+      routeVisibleInViewport();
+  }
+
   function fitRoute() {
     const coords = route.coords.length
       ? route.coords
       : route.points.map((point) => point.coord);
     if (!coords.length) return;
     try {
+      if (ui.center) ui.center.hidden = true;
       map.fitBounds(util.bounds(coords), {
         padding: { top: 130, bottom: 230, left: 38, right: 38 },
         duration: 500,
@@ -1028,7 +1095,6 @@
     route.stats = null;
     route.name = "";
     route.stale = false;
-    pendingMapPoint = false;
     clearMarkers();
     clearSources();
     renderList();
@@ -1343,13 +1409,6 @@
     );
   }
 
-  async function armMapPoint() {
-    if (!route.points.length && !(await ensureLocationStart())) return false;
-    pendingMapPoint = true;
-    app.setStatus("Position für den neuen Routenpunkt auf der Karte antippen.");
-    return true;
-  }
-
   function setupLineDrag() {
     const container = map.getContainer();
     const canvas = map.getCanvas();
@@ -1391,12 +1450,7 @@
     container.addEventListener(
       "pointerdown",
       (event) => {
-        if (
-          drag ||
-          pendingMapPoint ||
-          app.state.tracking.active ||
-          event.isPrimary === false
-        )
+        if (drag || app.state.tracking.active || event.isPrimary === false)
           return;
         if (event.button != null && event.button !== 0) return;
         if (
@@ -1537,7 +1591,6 @@
     remainingAt,
     setNavigationArrows,
     staticArrows: () => setNavigationArrows(null),
-    armMapPoint,
     render: () => {
       renderMarkers();
       renderList();
@@ -1549,8 +1602,7 @@
     collapsed = !collapsed;
     renderUI();
   });
-  ui.add?.addEventListener("click", armMapPoint);
-  app.el("mapAddPointBtn")?.addEventListener("click", armMapPoint);
+  ui.center?.addEventListener("click", fitRoute);
   ui.clear?.addEventListener("click", clearRoute);
   ui.share?.addEventListener("click", share);
   ui.export?.addEventListener("click", exportGpx);
@@ -1563,22 +1615,6 @@
     app.el("elevationToggleIcon").textContent = open ? "▴" : "▾";
   });
 
-  map.on("click", (event) => {
-    if (!pendingMapPoint || app.state.tracking.active) return;
-    const target = event.originalEvent?.target;
-    if (
-      target?.closest?.(
-        ".maplibregl-marker,.maplibregl-popup,button,input,label,a",
-      )
-    )
-      return;
-    addPoint([event.lngLat.lng, event.lngLat.lat], {
-      name: `Punkt ${route.points.length + 1}`,
-      type: "Kartenpunkt",
-      cat: "map",
-    });
-  });
-
   app.on("activity:change", () => {
     persist();
     if (route.points.length >= 2)
@@ -1587,10 +1623,12 @@
   });
   app.on("tracking:start", () => {
     markers.forEach((marker) => (marker.getElement().hidden = true));
+    syncRouteCenterButton();
   });
   app.on("tracking:stop", () => {
     markers.forEach((marker) => (marker.getElement().hidden = false));
     setNavigationArrows(null);
+    syncRouteCenterButton();
   });
 
   restore();
@@ -1601,6 +1639,8 @@
     renderMarkers();
     renderUI();
     setupLineDrag();
+    map.on("moveend", syncRouteCenterButton);
+    map.on("resize", syncRouteCenterButton);
     if (route.points.length >= 2) {
       if (sharedRoute) fitRoute();
       scheduleCalculation(80);
